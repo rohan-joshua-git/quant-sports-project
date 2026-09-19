@@ -1,0 +1,22 @@
+# Secrets
+.env
+
+# Python environments
+.venv/
+__pycache__/
+*.pyc
+
+# Model weights (large, re-downloadable)
+*.pt
+
+# Raw / derived video and CV outputs — never allowed in public repo output (see CLAUDE.md)
+experiments/runs/
+experiments/*.mp4
+experiments/*.avi
+experiments/*.jpg
+experiments/*.jpeg
+experiments/*.png
+Tester video/
+
+# Roboflow downloaded datasets (redistribution terms unresolved for storing raw data in repo)
+experiments/*-*/
