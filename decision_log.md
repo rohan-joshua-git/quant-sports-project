@@ -209,7 +209,117 @@ Colab usage (free tier vs. paid compute units) is still not set.
 
 ---
 
-## Still open (not decided as of 2026-09-18)
+## 2026-09-20: Code layout and Colab workflow for training `[DECIDED]`
+
+**Code layout:** real pipeline code lives under `pipeline/<stage>/`, mirroring the
+numbered stages in `CLAUDE.md` (`pipeline/detection/` is Stage 1; a calibration stage
+would be `pipeline/calibration/`, and so on). `experiments/` stays reserved for
+diagnostic spikes, per the 2026-09-18 folder-structure decision. Reason: the
+fine-tuning run is the actual Stage 1 deliverable that the smoke test led to, not a
+spike, so it should not sit alongside throwaway diagnostics.
+
+**Colab workflow:** training is run by uploading `pipeline/detection/train.ipynb` to
+Colab's browser interface and running it there, not through the official
+`google-colab-cli`. The CLI supports only Linux and macOS, and this machine runs
+Windows (it would need WSL2). The Roboflow API key is read from Colab Secrets at
+runtime, so no key is stored in the notebook file or committed. Trained weights are
+downloaded manually before the Colab session ends.
+
+**Repo hygiene:** `runs/` added to `.gitignore` (matches at any depth). Ultralytics
+writes annotated images and other derived outputs to `runs/` next to wherever a
+train/val/predict command is run, and the previous rule only covered
+`experiments/runs/`. Derived frames must stay out of the repo per the `CLAUDE.md`
+public-output rule.
+
+---
+
+## 2026-09-20: Roboflow fine-tuning run executed on Colab - results `[RESULT]`
+
+Supersedes the "fine-tuning run not yet executed" status on the 2026-09-18 retrain
+decision above. That entry is left as written.
+
+**Run configuration**
+- Base model: `yolo26n.pt` (COCO-pretrained), fine-tuned with Ultralytics 8.4.156.
+- Data: Roboflow Universe "Football Players Detection", version 1 (workspace
+  `roboflow-jvuqo`, project `football-players-detection-2frwp`), CC BY 4.0. Four
+  classes: ball, goalkeeper, player, referee. Validation split: 38 images, 905
+  instances. Test split: 13 images, 309 instances.
+- Settings: 100 epochs, imgsz 640, batch 16, Ultralytics defaults otherwise
+  (seed 0, `patience` 100 so early stopping could not trigger, `close_mosaic` 10,
+  auto optimizer). Taken from the run's `args.yaml`.
+- Selected checkpoint: `best.pt` is epoch 83 (highest fitness, validation mAP50-95
+  0.481 and mAP50 0.796), per `results.csv`. Total training time in the CSV is 1920 s
+  (0.533 hours).
+- Compute: Google Colab, Tesla T4 (about 14.9 GB), 0.534 hours (about 32 minutes) for
+  the full run. No NaN losses, no crashes. Colab tier and compute-unit cost were not
+  recorded.
+- Code: `pipeline/detection/train.ipynb`. Weights kept locally as
+  `pipeline/detection/football_yolo26n_best.pt` (gitignored via `*.pt`).
+
+**Validation results** (`best.pt`, the split used to select the checkpoint):
+
+| Class | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---|---|---|
+| all | 0.843 | 0.773 | 0.796 | 0.481 |
+| ball | 0.625 | 0.334 | 0.322 | 0.117 |
+| goalkeeper | 0.911 | 0.889 | 0.934 | 0.608 |
+| player | 0.937 | 0.980 | 0.988 | 0.674 |
+| referee | 0.899 | 0.888 | 0.938 | 0.523 |
+
+**Test results** (scored once, locally, CPU inference only):
+
+| Class | Precision | Recall | mAP50 | mAP50-95 |
+|---|---|---|---|---|
+| all | 0.865 | 0.794 | 0.772 | 0.495 |
+| ball | 0.789 | 0.364 | 0.311 | 0.143 |
+| goalkeeper | 0.845 | 0.995 | 0.899 | 0.609 |
+| player | 0.950 | 0.953 | 0.979 | 0.666 |
+| referee | 0.875 | 0.862 | 0.898 | 0.561 |
+
+**Observations**
+- Player, goalkeeper, and referee detection are strong on both splits. Ball
+  detection is weak on both (recall 0.33 to 0.36, mAP50 about 0.31 to 0.32), so the
+  ball-detection problem from the smoke test is not solved by this run. Ball
+  instance counts are very small (35 in validation, 11 in test), so ball metrics
+  are noisy.
+- Validation mAP50 plateaued around epoch 20 and mAP50-95 around epoch 40, while
+  training losses kept falling. The last 60 or so epochs added little. Training
+  losses fell steadily (box 1.89 to 1.06, cls 2.94 to 0.37) while validation losses
+  flattened from about epoch 40 (box about 1.22 to 1.25, cls about 0.45), so the gap
+  between training and validation loss widened. This is a mild overfitting pattern,
+  but validation mAP did not degrade.
+- The drop in training loss at epoch 91 coincides with Ultralytics closing mosaic
+  augmentation for the final 10 epochs, and is not a real improvement.
+- Test scores (0.772 / 0.495) are close to validation scores (0.796 / 0.481), so
+  there is no sign of large optimism from selecting the checkpoint on validation.
+  The test set is small, so this is not conclusive.
+
+**Limits of this result**
+- This measures accuracy on Roboflow's images, not on DFL footage. It says nothing
+  yet about the smoke-test failures (`tv` false positive, sideline personnel, weak
+  ball) on the cached DFL clip. That check has not been run.
+- The test split has now been scored once. It should not be used to choose between
+  further model variants. Use validation for selection, or create a fresh holdout.
+- This is a detection metric only. No tracking metric (HOTA against
+  SoccerNet-Tracking) has been computed.
+- The per-epoch log files were not saved at first. They were retrieved from the
+  Colab session later the same day and now live in
+  `pipeline/detection/run_logs/2026-09-20_yolo26n_100ep/` (`results.csv`,
+  `results.png`, `args.yaml`). The epoch numbers above match that CSV.
+
+**Compute data point:** one 100-epoch `yolo26n` run took about 0.53 hours on a T4.
+The numeric compute budget is still not set.
+
+**Follow-ups (none decided):**
+- Run the trained weights on the cached DFL clip and compare against the smoke-test
+  findings.
+- Options for weak ball detection (larger input size, larger model variant, more
+  ball-specific training data). Judge these after the DFL clip result, not before.
+- For future runs, consider fewer epochs or early stopping, given the plateau.
+
+---
+
+## Still open (not decided as of 2026-09-20)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
   access (see above).
@@ -222,7 +332,10 @@ Colab usage (free tier vs. paid compute units) is still not set.
   not yet resolved.
 - Numeric maximum drawdown tolerance: not yet set.
 - Numeric compute budget/cost ceiling for cloud GPU usage (Colab or similar): not yet
-  set, though the local-vs-cloud question itself is now decided (see above).
-- Git repository not yet initialized; `prereg/`, `factor_log.md`, and
-  `data_dictionary.md` not yet created.
+  set, though the local-vs-cloud question itself is now decided (see above). One
+  data point now exists: about 0.53 hours on a T4 for a 100-epoch `yolo26n` run.
+- Git repository is initialized (initial commit `35cff10`). `prereg/`,
+  `factor_log.md`, and `data_dictionary.md` not yet created.
+- Trained detector not yet run on the cached DFL clip; ball detection quality is
+  the known weak point.
 - Out-of-sample holdout set not yet locked.

@@ -1,9 +1,9 @@
 # Phase 0 Scoping Memo: Quant Sports Trading Project
 
 **Document ID:** QSP-P0-001
-**Version:** 1.1
-**Date:** 2026-09-18 (originally issued 2026-09-18; revised same day, see Revision
-History)
+**Version:** 1.2
+**Date:** 2026-09-20 (originally issued 2026-09-18; revised 2026-09-18 and
+2026-09-20, see Revision History)
 **Author:** Rohan
 **Distribution:** Internal
 **Status:** Draft. Phase 0 is not yet closed. Sections marked `[DECIDED]` are locked
@@ -18,6 +18,13 @@ downstream work until closed.
   logged in `decision_log.md`, which this memo now references rather than
   duplicates. This memo remains the point-in-time formal snapshot; `decision_log.md`
   is the append-only source of truth for what happened and when.
+- v1.2 (2026-09-20): Synced with `decision_log.md`. Section 5.5 (compute) was stale:
+  it still said no hardware plan existed, although the 2026-09-18 log entry had
+  already moved training to cloud GPU. Now updated, with a first runtime data point
+  from the executed Roboflow fine-tuning run. Section 6 (Stage 1) notes that the
+  run has been executed and summarizes the result. Section 8 updated for completed
+  items (git initialized, `decision_log.md` exists). No `[DECIDED]` scope decision
+  changed.
 
 ---
 
@@ -245,11 +252,15 @@ resolved for the applicable jurisdiction. Any public writeup should be framed as
 academic or research backtesting, and never as betting advice, pending resolution of
 this item.
 
-### 5.5 Compute Budget `[OPEN]`
+### 5.5 Compute Budget `[OPEN, hardware plan decided]`
 
-Computer-vision training and inference on broadcast video is GPU-intensive. No budget
-or hardware plan has been established. This will determine how much footage can
-realistically be processed.
+Computer-vision training and inference on broadcast video is GPU-intensive. The
+hardware plan is decided: training runs on external cloud GPU (Google Colab), not
+on local hardware, after a local training attempt caused a hardware fault on
+2026-09-18. Local hardware is used only for short inference-only checks. What remains
+open is a numeric cost ceiling for cloud usage. One data point now exists: the first
+100-epoch fine-tuning run (`yolo26n`, about 0.53 hours on a T4). This will still
+determine how much footage can realistically be processed.
 
 ---
 
@@ -262,7 +273,10 @@ realistically be processed.
    weights) surfaced three problems (unreliable ball detection, a false-positive
    `tv` classification on broadcast graphics, and sideline personnel misclassified
    as players); the resulting decision to fine-tune on a Roboflow dataset instead of
-   generic weights is logged in `decision_log.md`, not repeated here.
+   generic weights is logged in `decision_log.md`, not repeated here. That run was
+   executed on 2026-09-20: strong player, goalkeeper, and referee detection on the
+   Roboflow test split, but weak ball detection, and not yet checked on DFL footage.
+   Full results are in `decision_log.md`.
 2. **Calibration (pitch homography).** Pixel-space coordinates are mapped to
    real-world pitch coordinates. This step is required before any speed or distance
    figure is meaningful.
@@ -311,9 +325,8 @@ realistically be processed.
 4. Confirm the gambling-advice and publication boundary for the applicable
    jurisdiction (Section 5.4).
 5. Set a numeric maximum drawdown tolerance (Section 4).
-6. Establish a compute budget for computer-vision training and inference
-   (Section 5.5).
-7. Initialize version control for the project repository; establish
-   `decision_log.md`, `prereg/`, `factor_log.md`, and `data_dictionary.md` alongside
-   this memo.
+6. Set a numeric compute budget for cloud computer-vision training and inference
+   (Section 5.5). The hardware plan is already decided.
+7. Establish `prereg/`, `factor_log.md`, and `data_dictionary.md` alongside this
+   memo. (Version control is initialized and `decision_log.md` exists.)
 8. Lock the out-of-sample holdout set (Section 7).

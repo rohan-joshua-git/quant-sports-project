@@ -32,8 +32,11 @@ Phase 0 (scoping) — in progress, not yet closed. Solo project.
   COCO weights) confirmed this is a real gap in practice (unreliable ball detection,
   a `tv` false positive on broadcast graphics, sideline personnel misclassified as
   players) — decision made 2026-09-18 to fine-tune on the Roboflow Universe "Football
-  Players Detection" dataset (CC BY 4.0) instead of relying on generic weights. Not
-  yet executed. Detail in `decision_log.md`.
+  Players Detection" dataset (CC BY 4.0) instead of relying on generic weights.
+  Executed 2026-09-20 on Colab (T4, about 32 minutes, 100 epochs): test-split mAP50
+  0.772 / mAP50-95 0.495, strong for player/goalkeeper/referee but weak for the ball
+  (mAP50 about 0.31, recall about 0.36). Measured on Roboflow's images only, not yet
+  run on the cached DFL clip. Detail in `decision_log.md`.
 - Tracking-accuracy validation: SoccerNet-Tracking (Swiss Super League, 12 games,
   labeled bounding boxes + tracklet IDs), scored via HOTA (not MOTA — HOTA balances
   detection and identity-association quality, which is where trackers usually fail
@@ -115,6 +118,9 @@ IC/FDR/PBO on the development set.
   raw video, no derived video frames, given DFL/SoccerNet redistribution restrictions.
 
 ## Pipeline architecture (conceptual stages)
+Code layout: real pipeline code lives in `pipeline/<stage>/` (Stage 1 is
+`pipeline/detection/`). `experiments/` is reserved for diagnostic spikes.
+
 1. Detection & tracking (player/ball/referee) — validated via HOTA against
    SoccerNet-Tracking, plus manual spot-check on actual DFL footage.
 2. Calibration (pitch homography) — pixel space → real-world coordinates; required
@@ -134,8 +140,8 @@ IC/FDR/PBO on the development set.
 - Resolve primary video/CV source for the research build, following DFL Kaggle
   access loss (see Decisions locked so far).
 - Request and read SoccerNet's actual NDA text.
-- `git init` this repo; stand up `prereg/`, `factor_log.md`, `data_dictionary.md`.
-  (`decision_log.md` is done — see project root.)
+- Stand up `prereg/`, `factor_log.md`, `data_dictionary.md`. (`decision_log.md` is
+  done and the repo is git-initialized.)
 - Lock the out-of-sample holdout set.
 - Check redistribution ToS for whichever market data source is chosen.
 - Set a numeric max-drawdown tolerance.
@@ -144,8 +150,10 @@ IC/FDR/PBO on the development set.
   is now decided (external/cloud GPU, e.g. Google Colab, not sustained local
   training — a local training attempt caused a hardware failure on 2026-09-18; local
   hardware remains fine for short inference-only smoke tests). See `decision_log.md`.
-- Execute the Roboflow-based detector fine-tuning run (decision made, not yet run;
-  to be run on external/cloud GPU per the above).
+  Data point: the first 100-epoch fine-tuning run took about 0.53 hours on a Colab T4.
+- Run the trained detector (`pipeline/detection/football_yolo26n_best.pt`) on the
+  cached DFL clip and compare against the smoke-test findings. Then decide how to
+  address weak ball detection.
 
 ## Maintenance notes (read before making updates to this project)
 - `decision_log.md` (project root) is the append-only source of truth for what
