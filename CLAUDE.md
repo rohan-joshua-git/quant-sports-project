@@ -4,8 +4,10 @@
 Institutional-grade quant research project applying equities-style factor methodology
 (point-in-time discipline, cross-sectional z-scoring, IC / Newey-West / BH-FDR / PBO
 evaluation) to sports, using computer-vision-derived features as the data-generation
-layer in place of fundamentals data. Scoped as a backtest first; live in-play trading
-is a stretch goal, not the initial deliverable.
+layer in place of fundamentals data. Primary goal (changed 2026-09-21): live in-play
+trading. The locked success criteria and validation discipline below still gate any
+real-money trading. Earlier framing was "backtest first, live is a stretch goal";
+see `decision_log.md`.
 
 ## Status
 Phase 0 (scoping) — in progress, not yet closed. Solo project.
@@ -151,9 +153,27 @@ Code layout: real pipeline code lives in `pipeline/<stage>/` (Stage 1 is
   training — a local training attempt caused a hardware failure on 2026-09-18; local
   hardware remains fine for short inference-only smoke tests). See `decision_log.md`.
   Data point: the first 100-epoch fine-tuning run took about 0.53 hours on a Colab T4.
-- Run the trained detector (`pipeline/detection/football_yolo26n_best.pt`) on the
-  cached DFL clip and compare against the smoke-test findings. Then decide how to
-  address weak ball detection.
+- Define live-system requirements now that live trading is the primary goal (live
+  video source and its terms, frame-to-order latency budget, market execution,
+  regulatory exposure). See the 2026-09-21 entry in `decision_log.md`.
+- Manual spot-check of the trained detector (`pipeline/detection/football_yolo26n_best.pt`)
+  on the cached DFL clip: hand-label a small frame sample to get real ball
+  precision/recall and referee-confusion figures. A 2026-09-21 comparison (counts and
+  visual review, no ground truth) showed ball detected in 65% of frames against 11%
+  for the stock model, and the `tv` and sideline-staff problems gone. Then decide
+  how to address remaining ball weakness.
+- Stage 1 annotation and tracking polish (`pipeline/common/drawing.py`, first
+  annotated video reviewed 2026-09-21):
+  - Try basing ring width on box height instead of width (e.g. `a` about 0.4 of box
+    height) to reduce ring-size flicker, and compare on the same frames.
+  - Add tracking (`model.track(..., persist=True)`) for persistent player IDs, then
+    draw ID labels under each ring.
+  - Smoothing layer on top of tracking: per-ID moving average for ring size, and a
+    per-ID majority vote on class (player/goalkeeper/referee) to stop label flips.
+  - Team assignment from jersey color (cluster once per track ID, then reuse) so the
+    two teams look different.
+  - Check whether duplicate rings on crowded groups (double detections of one
+    player) drop once tracking is in, and tune if not.
 
 ## Maintenance notes (read before making updates to this project)
 - `decision_log.md` (project root) is the append-only source of truth for what

@@ -1,9 +1,9 @@
 # Phase 0 Scoping Memo: Quant Sports Trading Project
 
 **Document ID:** QSP-P0-001
-**Version:** 1.2
-**Date:** 2026-09-20 (originally issued 2026-09-18; revised 2026-09-18 and
-2026-09-20, see Revision History)
+**Version:** 1.3
+**Date:** 2026-09-21 (originally issued 2026-09-18; revised 2026-09-18,
+2026-09-20 and 2026-09-21, see Revision History)
 **Author:** Rohan
 **Distribution:** Internal
 **Status:** Draft. Phase 0 is not yet closed. Sections marked `[DECIDED]` are locked
@@ -25,6 +25,11 @@ downstream work until closed.
   run has been executed and summarizes the result. Section 8 updated for completed
   items (git initialized, `decision_log.md` exists). No `[DECIDED]` scope decision
   changed.
+- v1.3 (2026-09-21): Scope change logged in `decision_log.md`. Live in-play trading
+  is now the primary goal instead of a stretch goal (Executive Summary and Section
+  1 updated). The evaluation discipline and Section 4 success criteria are
+  unchanged. Live-system requirements (video source, latency, execution,
+  regulatory exposure) are open and tracked in the log, not yet added to Section 5.
 
 ---
 
@@ -39,8 +44,8 @@ Overfitting), to a sports domain, using computer-vision-derived tracking and eve
 data in place of fundamentals data.
 
 Scope is fixed at soccer, with a team-level match-market framing. The project is
-structured as a backtest in its first phase; live execution is a stated stretch goal
-and out of scope for the current phase. One material risk remains open and gates
+oriented toward live in-play trading as its primary goal (revised 2026-09-21; it was
+originally a backtest-first project with live as a stretch goal). One material risk remains open and gates
 finalization of the target variable and success criteria: a temporal mismatch between
 the available video data (2022 season) and the available market history on the
 candidate trading venues (2024 onward). This risk, and four smaller open items, are
@@ -58,8 +63,9 @@ treated as a cross-sectional asset universe: a set of entities (teams), each car
 a market-implied price (odds), evaluated for mispricing using signals computed across
 that cross-section.
 
-The project is scoped as a backtest in its first phase. Live in-play trading and
-execution is a stretch goal, not the initial deliverable. The evaluation bar is set at
+Live in-play trading is the primary goal (revised 2026-09-21; originally scoped as a
+backtest first phase with live execution as a stretch goal). The locked success
+criteria in Section 4 still gate any real-money trading. The evaluation bar is set at
 an institutional research standard: every factor tested is pre-registered before its
 result is known, every test, whether it passes or fails, is logged, and statistical
 validity (FDR-corrected significance, PBO-checked robustness) is required before any

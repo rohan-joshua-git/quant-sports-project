@@ -319,6 +319,95 @@ The numeric compute budget is still not set.
 
 ---
 
+## 2026-09-21: Fine-tuned vs stock detector on the cached DFL clip `[RESULT]`
+
+Follow-up to the 2026-09-20 run. Both `yolo26n.pt` (stock COCO) and
+`football_yolo26n_best.pt` (fine-tuned) were run on `08fd33_4.mp4` (750 frames, 25
+fps, 1920x1080) at default confidence, on local CPU (inference only). Method:
+per-frame detection counts across all 750 frames, plus manual review of seven
+evenly spaced frames and one frame where the stock model produced a `tv` box. There
+is no ground truth on this footage, so these results show how often each model
+fires and what it labels. They are not accuracy scores.
+
+| Measure | Stock COCO | Fine-tuned |
+|---|---|---|
+| Frames with a ball detected | 82 of 750 (10.9%) | 490 of 750 (65.3%) |
+| Median top ball confidence | 0.39 | 0.53 |
+| Longest run of frames with no ball | 264 | 14 |
+| `tv` detections | 11 | none (no such class) |
+
+Fine-tuned detections by class over the clip: player 15503, referee 2326, ball 638,
+goalkeeper 235.
+
+**The three smoke-test problems, on this clip:**
+- Ball: much more consistent (see table). Confirmed correct by eye only in a few
+  frames.
+- Graphics false positive: in frame 439 the stock `tv` box spans almost the whole
+  frame. The fine-tuned model produces nothing there.
+- Sideline personnel: the stock model boxed coaches and staff as `person` in the
+  reviewed frames. The fine-tuned model did not box them in frames 37, 375, and 439.
+  Assistant referees on the touchline were labeled `referee` (confidence 0.42 to
+  0.82). Player confidence was also higher (typically 0.7 to 0.87 against 0.25 to
+  0.6).
+
+**Limits:**
+- One clip, one match, one camera angle. It is also the clip that exposed the
+  original problems, so it supports the retrain decision but is not independent
+  validation.
+- Ball precision is unknown. Some of the 490 ball frames could be false positives,
+  and the ball is still absent from about 35% of frames (some of that is genuine
+  occlusion or the ball leaving view).
+- A few mid-pitch `referee` labels at moderate confidence (about 0.5 to 0.75) may be
+  players. Not verified.
+- Not a tracking result. No HOTA has been computed.
+
+**Follow-up (not decided):** the manual spot-check already required by `CLAUDE.md`
+(hand-label a small sample of frames from this clip) would turn these counts into
+real ball precision/recall and referee-confusion figures. Options for the remaining
+ball weakness stay open until then.
+
+---
+
+## 2026-09-21: Scope change - live in-play trading is now the primary goal `[DECIDED]`
+
+**Decision (stated by Rohan):** the ultimate goal is a system that handles live
+streaming, that is, live in-play trading. This replaces the earlier framing in
+`CLAUDE.md` and the scoping memo ("backtest first, live is a stretch goal, not the
+initial deliverable"). The earlier framing is left as written in the earlier
+entries above.
+
+**What this does not change:**
+- Detector training and the Stage 1 to 3 build (detection, tracking, calibration,
+  identity) are unaffected. They do not depend on when the footage was recorded.
+- The evaluation discipline is unchanged. Pre-registration, full factor logging,
+  IC / Newey-West / BH-FDR / PBO, the locked holdout, and the draft success criteria
+  (including out-of-sample validation across multiple seasons or competitions) still
+  apply. Nothing in this entry relaxes them, and they still gate any real-money
+  trading.
+
+**What this makes more important (all still open, none decided):**
+- The video/market temporal mismatch. A live system still has to show evidence of
+  edge before real money, and the options (decouple, period-matched odds,
+  forward-looking capture) are unchanged. Forward-looking capture is now the path
+  closest to the end goal.
+- Live video source. Where a real-time match feed comes from, its licensing and
+  terms, and the broadcast-copyright/scraping risk. Not verified.
+- Latency budget from frame to order. Measured so far: the fine-tuned `yolo26n`
+  detector runs at about 45 ms per frame on local CPU (detection only, no tracking
+  or calibration yet). The target-variable definition already injects a deliberate
+  latency lag.
+- Market execution: Kalshi/Polymarket API latency, in-play liquidity, and order
+  behavior. Not checked.
+- Regulatory exposure. Previously only the publication/gambling-advice boundary was
+  flagged. Placing real trades adds jurisdiction and platform-eligibility questions.
+  Not verified.
+- Numeric maximum drawdown tolerance, still unset, becomes more urgent once real
+  money is in scope.
+
+**Rationale:** not recorded here. Rohan stated the change without giving reasons.
+
+---
+
 ## Still open (not decided as of 2026-09-20)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
@@ -336,6 +425,7 @@ The numeric compute budget is still not set.
   data point now exists: about 0.53 hours on a T4 for a 100-epoch `yolo26n` run.
 - Git repository is initialized (initial commit `35cff10`). `prereg/`,
   `factor_log.md`, and `data_dictionary.md` not yet created.
-- Trained detector not yet run on the cached DFL clip; ball detection quality is
-  the known weak point.
+- Trained detector was run on the cached DFL clip on 2026-09-21 (counts and visual
+  review only). Ball precision and referee confusion are still unmeasured; a manual
+  spot-check is the open next step.
 - Out-of-sample holdout set not yet locked.
