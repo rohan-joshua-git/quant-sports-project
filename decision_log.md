@@ -514,7 +514,7 @@ minor limitation.
 - Known limitations: minor double-counting, weak ball detection (35% miss rate)
 - Latency: 58ms mean on CPU (over 40ms budget; GPU required for live trading)
 
-**Stage 2: Calibration (pixel space → real-world pitch coordinates) — not yet started**
+**Stage 2: Calibration (pixel space → real-world pitch coordinates): not yet started**
 
 Purpose: convert pixel bounding boxes to real-world pitch positions and distances. Needed for:
 - Tracking player speed and acceleration (pixels/frame → meters/second)
@@ -542,6 +542,148 @@ Purpose: convert pixel bounding boxes to real-world pitch positions and distance
 
 ---
 
+## 2026-09-22: Tracker review findings - open bugs in Stage 1 `[OPEN]`
+
+A code review of `pipeline/detection/tracker.py` and
+`experiments/tracker_smoke_test.ipynb` found problems that qualify the "Stage 1
+complete" entry above. That entry is left as written; this records what was found
+afterwards.
+
+- Interpolated ball is assigned `class_id = 2`, which is `player` in the dataset's
+  class order (`ball, goalkeeper, player, referee`). Ball is class 0.
+- Interpolated ball uses a hardcoded `tracker_id = 1`, which can collide with a real
+  ByteTrack ID.
+- Carry-forward has no maximum age, so a ball that leaves the frame stays at its last
+  position indefinitely.
+- The visual-check cell draws `detection_raw` (raw YOLO output, before NMS and
+  ByteTrack), not `tracks`. The earlier findings "100% ID persistence" and "NMS did
+  not remove duplicates" were therefore not checked on tracker output.
+- The "persistence rate" metric counts IDs seen in 2+ frames. It cannot detect ID
+  switches, which is the failure that matters.
+- `with_nms()` is class-aware by default, so one person detected as both `player` and
+  `referee` keeps both boxes. `class_agnostic=True` is worth testing.
+- The same `Tracker` instance is reused across cells without a reset.
+- The latency split (YOLO about 45 ms, NMS + ByteTrack about 13 ms) and the GPU figure
+  (15 to 20 ms) are estimates, not measurements. The mean includes model warmup.
+
+Separately, the manual hand-label spot-check that CLAUDE.md treats as the Stage 1
+quality gate has not been done. Stage 1 should be read as "built, not yet validated".
+
+---
+
+## 2026-09-22: Research plan for quantitative methods, and the edge hypothesis `[DECIDED]`
+
+**Context:** a review of which quantitative finance techniques fit this project, done
+with input from an external LLM (whose citations were partly wrong and were checked
+by web search) and a follow-up review here. The external model declined to cover
+market-side, execution and sizing material; that part was done separately.
+
+**Key finding that shapes the plan:** Croxson & Reade (2014, Economic Journal,
+DOI 10.1111/ecoj.12033) show soccer betting prices absorb goals swiftly and fully.
+Broadcast video lags the live event by seconds or more, and market makers price from
+faster official data feeds. So any edge from this project cannot come from detecting
+events (goals, cards, shots) before the market. The working hypothesis is instead
+**state estimation**: slow-moving tactical and physical state that is not in event
+feeds (sustained pressure, territorial dominance, shape changes after substitutions,
+fatigue proxies) may not be fully priced. Fees also set a high bar: Kalshi's taker
+fee is reportedly about 0.07 x P x (1 - P) per $1 contract (1.75 cents at a 50 cent
+price), per third-party summaries not yet checked against Kalshi's own fee schedule.
+
+**Hypothesis ladder (to be written into `prereg/`):**
+- H0: tracking-derived factors add no information over a conventional baseline
+  (score, time remaining, pre-match team strength).
+- H1: tracking factors add information about outcomes over the next few minutes.
+- H2: the added information exists only in particular latent match states.
+- H3: the added information survives realistic video latency.
+- H4: the effect holds across seasons and competitions.
+
+A negative result under this design is still a valid, reportable result.
+
+**Plan, four parallel tracks feeding one final test:**
+
+Track 1, finish Stage 1 properly (now):
+1. Fix the tracker bugs logged above, then redo the visual check on tracked output
+   with ID labels.
+2. Replace the carry-forward ball with a Kalman filter (predicted position plus
+   uncertainty during misses).
+3. Hand-label a sample of DFL frames to measure detector error rates. These rates
+   are reused later for the CV-error perturbation test.
+
+Track 2, market event study (no video needed):
+1. Check Kalshi and Polymarket data terms of service first.
+2. Pull 2024+ in-play soccer price history. Measure speed and completeness of price
+   reaction to goals and red cards (Croxson & Reade method). Aligning video goal
+   times with market jumps also measures broadcast delay directly.
+3. Test market-price calibration (including favorite-longshot bias) and profile
+   spreads, depth and fees by match minute and price level.
+
+Track 3, outcome baseline (no video needed):
+1. Dixon-Coles pre-match team strength, with hierarchical (partial-pooling) shrinkage
+   toward the league average. Licensing of the historical results source must be
+   checked first.
+2. Dixon-Robinson in-play goal hazard, updated by score and time remaining.
+3. Monte Carlo of the remaining match for P(win/draw/loss) at any minute. This is the
+   baseline every CV factor must beat.
+
+Track 4, pre-registration (before any feature is tested):
+1. Power analysis first: how many matches are needed to detect rank-IC of 0.02 at
+   Newey-West t of at least 2. If the answer exceeds the data available, the success
+   criteria must be revisited before building further.
+2. Resolve the video source.
+3. Write the H0 to H4 ladder into `prereg/`, with a small factor family (5 to 10 slow
+   state factors, including the forward-only HMM state).
+4. Lock the holdout set and a latency delay grid (2, 5, 10, 30 seconds).
+
+Final test (after Stages 2 to 4: calibration, GMM team assignment, features):
+1. Neutralize each factor against the baseline probability (keep the residual), then
+   test incremental information: IC and IC decay by horizon (1, 5, 15, 30 minutes),
+   match-clustered standard errors, Diebold-Mariano forecast comparison clustered by
+   match, BH across the full family, combinatorial purged CV, PBO, Deflated Sharpe
+   Ratio.
+2. Robustness: CV-error perturbation using Track 1's measured error rates, and the
+   latency grid.
+3. Only if the signal survives: latency-injected market replay against tradeable
+   order-book prices, trading only when edge exceeds fee plus half-spread plus a
+   buffer, markout analysis for adverse selection, shrunk Kelly (Baker & McHale 2013)
+   with one allocation per match and per-match caps, and a drawdown halt rule set from
+   a match-block bootstrap of backtest P&L (this also supplies the open numeric
+   max-drawdown tolerance).
+
+**Methods demoted or rejected:**
+- EGARCH and Markov-switching on market log-odds: demoted from core to descriptive at
+  most. Bounded prices, event jumps, suspensions and short histories make them a poor
+  fit, and they risk just finding "pre-goal / post-goal" regimes. This reverses an
+  earlier recommendation made in conversation.
+- Markowitz optimization: rejected. Binary payoffs break mean-variance assumptions
+  and covariance estimates would be noise at this sample size. Kelly variants replace
+  it.
+- Technical indicators, deep order-book models, reinforcement learning for
+  execution, and market making as a strategy: rejected (no mechanism, too data
+  hungry, or adverse selection for a slow trader).
+- LLM techniques and blockchain logic: out of scope for the research pipeline.
+- Pitch control, Voronoi and passing-lane features: deferred. Broadcast video usually
+  shows only part of the pitch, so features needing all 22 players are unreliable.
+  Ball-local features are preferred.
+
+**Why this structure:** Tracks 2 and 3 do not depend on the unresolved video source,
+so work can progress while that blocker stays open. Track 2 also tests whether the
+live-trading premise can work before months go into the full pipeline.
+
+**Key references (checked by search on 2026-09-22):** Dixon & Robinson (1998),
+JRSS D 47(3), DOI 10.1111/1467-9884.00152; Angelini, De Angelis & Singleton (2022),
+IJF 38(1), DOI 10.1016/j.ijforecast.2021.05.012; Baker & McHale (2013), Decision
+Analysis 10(3), DOI 10.1287/deca.2013.0271; Whitrow (2007), JRSS C 56(5),
+DOI 10.1111/j.1467-9876.2007.00594.x; Arian, Norouzi Mobarekeh & Seco (2024),
+Knowledge-Based Systems 305, DOI 10.1016/j.knosys.2024.112477. Dixon & Coles (1997)
+and Bailey & Lopez de Prado (2014, 2017) are cited from memory and should be checked
+before being relied on. Citations from the external model found to be wrong: a
+Spearman (2018) "Markov model for the value of defending" paper (not found), and
+incorrect author lists for SoccerNet-Tracking (actual first author Cioppa, CVPRW 2022)
+and SoccerNet Game State Reconstruction (actually Somers et al., CVPRW 2024,
+arXiv 2404.11335).
+
+---
+
 ## Still open (not decided as of 2026-09-22)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
@@ -566,3 +708,8 @@ Purpose: convert pixel bounding boxes to real-world pitch positions and distance
 - Manual spot-check on the DFL clip (Stage 1 quality gate): still not started. High
   priority now that tracker architecture is locked, since per-frame detection accuracy
   becomes critical for live streaming (no batch reprocessing fallback).
+- Tracker bugs from the 2026-09-22 review: not yet fixed.
+- Power analysis (matches needed to detect the target rank-IC): not yet done, and it
+  may force a revision of the success criteria.
+- Kalshi and Polymarket fee schedules: third-party figures only, official schedules
+  not yet read.

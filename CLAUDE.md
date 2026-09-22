@@ -37,8 +37,26 @@ Phase 0 (scoping) — in progress, not yet closed. Solo project.
   Players Detection" dataset (CC BY 4.0) instead of relying on generic weights.
   Executed 2026-09-20 on Colab (T4, about 32 minutes, 100 epochs): test-split mAP50
   0.772 / mAP50-95 0.495, strong for player/goalkeeper/referee but weak for the ball
-  (mAP50 about 0.31, recall about 0.36). Measured on Roboflow's images only, not yet
-  run on the cached DFL clip. Detail in `decision_log.md`.
+  (mAP50 about 0.31, recall about 0.36). Measured on Roboflow's images only. Run on
+  the cached DFL clip 2026-09-21 (counts and visual review only, no ground truth).
+  Detail in `decision_log.md`.
+- Tracker architecture (2026-09-22): frame-by-frame `Tracker` class in
+  `pipeline/detection/tracker.py` (YOLO, then NMS, then `supervision` ByteTrack, plus
+  a carry-forward ball fill-in), chosen for live-stream compatibility. Measured about
+  58 ms/frame mean on local CPU, over the 40 ms budget at 25 fps. Stage 1 is built
+  but **not yet validated**: a same-day review found open bugs (see Open next steps)
+  and the hand-label spot-check has not been done.
+- Research plan and edge hypothesis (2026-09-22, full detail in `decision_log.md`):
+  in-play prices absorb goals swiftly and fully (Croxson & Reade 2014), and broadcast
+  video lags the live event, so any edge must come from **slow state estimation**
+  (sustained pressure, dominance, shape changes, fatigue), not from detecting events
+  before the market. Tested via a pre-registered H0 to H4 ladder: tracking adds
+  nothing (H0), adds short-horizon information over a score/time/team-strength
+  baseline (H1), only in some latent states (H2), survives realistic latency (H3),
+  holds across seasons/competitions (H4). EGARCH/Markov-switching are demoted to
+  descriptive use; Markowitz, technical indicators, deep order-book models, RL
+  execution and market making are rejected; features needing all 22 players (pitch
+  control, Voronoi) are deferred because broadcast video shows only part of the pitch.
 - Tracking-accuracy validation: SoccerNet-Tracking (Swiss Super League, 12 games,
   labeled bounding boxes + tracklet IDs), scored via HOTA (not MOTA — HOTA balances
   detection and identity-association quality, which is where trackers usually fail
@@ -101,7 +119,11 @@ revised/settled price — the sports-analytics equivalent of lookahead bias.
 - PBO ≤ 20%.
 - Positive net edge after commission + slippage, with a minimum Sharpe-like ratio on
   match-level P&L, validated across multiple seasons/competitions out-of-sample.
-- Max drawdown tolerance — not yet numerically set.
+- Max drawdown tolerance: not yet numerically set. Planned method: a halt level from a
+  match-block bootstrap of backtest P&L (e.g. its 99th-percentile drawdown).
+- Power analysis still to be done: if the matches available cannot detect rank-IC of
+  0.02 at Newey-West t of at least 2, these criteria must be revisited before building
+  further.
 
 ## Roles
 Solo project. "Independent validation" enforced procedurally via a locked holdout set
@@ -121,7 +143,9 @@ IC/FDR/PBO on the development set.
 
 ## Pipeline architecture (conceptual stages)
 Code layout: real pipeline code lives in `pipeline/<stage>/` (Stage 1 is
-`pipeline/detection/`). `experiments/` is reserved for diagnostic spikes.
+`pipeline/detection/`: `train.ipynb`, `evaluation.ipynb`, `tracker.py`; shared
+drawing helpers in `pipeline/common/drawing.py`). `experiments/` is reserved for
+diagnostic spikes.
 
 1. Detection & tracking (player/ball/referee) — validated via HOTA against
    SoccerNet-Tracking, plus manual spot-check on actual DFL footage.
@@ -156,24 +180,50 @@ Code layout: real pipeline code lives in `pipeline/<stage>/` (Stage 1 is
 - Define live-system requirements now that live trading is the primary goal (live
   video source and its terms, frame-to-order latency budget, market execution,
   regulatory exposure). See the 2026-09-21 entry in `decision_log.md`.
-- Manual spot-check of the trained detector (`pipeline/detection/football_yolo26n_best.pt`)
-  on the cached DFL clip: hand-label a small frame sample to get real ball
-  precision/recall and referee-confusion figures. A 2026-09-21 comparison (counts and
-  visual review, no ground truth) showed ball detected in 65% of frames against 11%
-  for the stock model, and the `tv` and sideline-staff problems gone. Then decide
-  how to address remaining ball weakness.
-- Stage 1 annotation and tracking polish (`pipeline/common/drawing.py`, first
-  annotated video reviewed 2026-09-21):
-  - Try basing ring width on box height instead of width (e.g. `a` about 0.4 of box
-    height) to reduce ring-size flicker, and compare on the same frames.
-  - Add tracking (`model.track(..., persist=True)`) for persistent player IDs, then
-    draw ID labels under each ring.
-  - Smoothing layer on top of tracking: per-ID moving average for ring size, and a
-    per-ID majority vote on class (player/goalkeeper/referee) to stop label flips.
-  - Team assignment from jersey color (cluster once per track ID, then reuse) so the
-    two teams look different.
-  - Check whether duplicate rings on crowded groups (double detections of one
-    player) drop once tracking is in, and tune if not.
+
+Research plan (2026-09-22, see `decision_log.md`): four parallel tracks feeding one
+final test. Tracks 2 and 3 do not need the unresolved video source.
+
+- **Track 1: finish Stage 1 properly (current focus).**
+  - Fix the tracker bugs from the 2026-09-22 review: interpolated ball uses
+    `class_id = 2` (player) instead of 0 (ball); hardcoded `tracker_id = 1` can
+    collide with real IDs; carry-forward has no maximum age; the visual-check cell
+    draws raw detections instead of `tracks`; the persistence metric cannot detect ID
+    switches; `with_nms()` is class-aware by default (test `class_agnostic=True`);
+    the `Tracker` instance is not reset between notebook cells.
+  - Redo the visual check on tracked output, with ID labels drawn under each ring.
+  - Replace the carry-forward ball with a Kalman filter (position plus uncertainty).
+  - Manual spot-check of the trained detector
+    (`pipeline/detection/football_yolo26n_best.pt`) on the cached DFL clip:
+    hand-label a small frame sample to get real ball precision/recall and
+    referee-confusion figures. A 2026-09-21 comparison (counts and visual review, no
+    ground truth) showed ball detected in 65% of frames against 11% for the stock
+    model, and the `tv` and sideline-staff problems gone. The measured error rates
+    are reused later for the CV-error perturbation test.
+  - Annotation polish (lower priority): try ring width based on box height (e.g. `a`
+    about 0.4 of box height) to reduce flicker; per-ID moving average for ring size
+    and per-ID majority vote on class to stop label flips.
+- **Track 2: market event study.** Check Kalshi/Polymarket data ToS and official fee
+  schedules first. Then, on 2024+ in-play soccer prices: speed and completeness of
+  price reaction to goals and red cards (Croxson & Reade method), which also measures
+  broadcast delay; market-price calibration including favorite-longshot bias;
+  spread, depth and fee profile by minute and price level.
+- **Track 3: outcome baseline.** Dixon-Coles pre-match strength with partial-pooling
+  shrinkage, Dixon-Robinson in-play goal hazard, Monte Carlo of the remaining match.
+  Check licensing of the historical results source first.
+- **Track 4: pre-registration.** Power analysis first. Then write the H0 to H4
+  ladder and a small factor family (5 to 10 slow state factors, including the
+  forward-only HMM state) into `prereg/`, lock the holdout, and fix the latency grid
+  (2, 5, 10, 30 seconds).
+- **Stages 2 to 4 before the final test:** homography calibration, GMM team
+  assignment from jersey color (one fit per track ID, then reuse), re-ID, possession,
+  PIT features.
+- **Final test:** factors neutralized against the baseline probability; IC and IC
+  decay by horizon, match-clustered SEs, Diebold-Mariano clustered by match, BH,
+  combinatorial purged CV, PBO, Deflated Sharpe Ratio; CV-error perturbation and
+  latency robustness. Only if the signal survives: latency-injected replay on
+  tradeable order-book prices, edge threshold of fee plus half-spread plus buffer,
+  markouts, shrunk Kelly with per-match caps, bootstrap drawdown halt rule.
 
 ## Maintenance notes (read before making updates to this project)
 - `decision_log.md` (project root) is the append-only source of truth for what
