@@ -1,0 +1,10 @@
+# Local inference / notebook environment (Python 3.14.7).
+# Colab training installs its own packages in pipeline/detection/train.ipynb.
+ultralytics==8.4.155
+# sv.ByteTrack is removed in supervision 0.31; do not upgrade without migrating.
+supervision==0.30.4
+opencv-python==5.0.0.93
+numpy==2.3.5
+# CPU vs CUDA build is chosen by which index torch is installed from.
+torch==2.14.0
+ipykernel==7.3.0

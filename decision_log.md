@@ -684,6 +684,235 @@ arXiv 2404.11335).
 
 ---
 
+## 2026-09-25: Tracker review follow-up - fixes applied, new problems found `[RESULT]`
+
+Follow-up to the 2026-09-22 review entry above, which is left as written.
+
+**Status of each review item:**
+- Interpolated ball `class_id`: fixed. The ball class is now looked up by name from
+  `model.names`, not hardcoded.
+- Hardcoded `tracker_id = 1`: fixed. The interpolated ball uses `-1`, which ByteTrack
+  never assigns (its IDs start at 1).
+- No maximum age on carry-forward: fixed. `max_ball_miss` (default 5 frames, 0.2 s at
+  25 fps); after that the stale box is dropped.
+- Visual check drew raw detections: fixed. New `annotate_tracks()` in
+  `pipeline/common/drawing.py` draws tracker output with ID labels under each ring,
+  and draws a carried-forward ball as an outline so a guess never looks like an
+  observation. The new video has not been reviewed by eye yet.
+- Persistence metric: replaced by track-break (fragmentation) statistics. It still
+  cannot detect ID switches; that needs ground truth.
+- Class-aware NMS: now a constructor setting (`nms_class_agnostic`), default still
+  `False`. Not tested yet.
+- No reset between cells: fixed. New `reset()` method, called before each rerun.
+- Latency figures: frame 0 (model warmup) is now excluded. Remeasured on 50 frames:
+  mean 47.04 ms, P50 43.90 ms, P95 64.23 ms, max 120.82 ms. This supersedes the
+  58.27 ms mean from 2026-09-22. Still over the 40 ms budget. The split between YOLO
+  and NMS + ByteTrack is still unmeasured.
+
+**Track-break statistics, frames 0 to 99 of `08fd33_4.mp4`:** 24 objects on frame 0,
+30 unique IDs issued, 6 new IDs after frame 0, 2 tracks shorter than 5 frames, 16 IDs
+present in all 100 frames, median track lifetime 100 frames. These counts may include
+the `-1` interpolated-ball ID, which slightly inflates "new IDs". In the 50-frame
+visual check, 5 frames used a carried-forward ball.
+
+**New problems found in the 2026-09-25 read-through:**
+1. The ball goes through ByteTrack before the code looks for it. In `supervision`
+   0.30.4, ByteTrack only starts a new track at confidence 0.35 or higher
+   (`track_activation_threshold` 0.25 plus 0.1). Detections between 0.1 and 0.25 are
+   only used to extend an existing track by box overlap, which a small, fast ball
+   often fails. So many ball detections are discarded even though the detector runs
+   at `conf=0.1`. It also means the ball-resolution test (not yet run) would measure
+   detector plus ByteTrack, not the detector alone as its notebook says.
+2. `sv.ByteTrack` is deprecated and will be removed in `supervision` 0.31. The smoke
+   test notebook installed `supervision` without a version pin.
+3. The notebooks ran on the global Python 3.14 interpreter, not `.venv`. Package
+   versions match except torch: global is a CPU build, `.venv` is a CUDA build
+   (`2.14.0+cu130`). All latency figures so far are CPU-only.
+4. With more than one ball detection in a frame, the first in array order was kept,
+   not the most confident.
+
+**Decision: tuning / spot-check frame split `[DECIDED]`.** From now on, frames 0 to
+299 of `08fd33_4.mp4` are used for tuning (inference size, NMS setting, ball filter
+settings). Frames 300 to 749 are held back for the hand-label spot-check, so error
+rates are not measured on the frames the settings were tuned on. Limit: this split
+is not pristine. The 2026-09-21 comparison ran both models over all 750 frames and
+frames 375 and 439 were reviewed by eye. No setting was tuned on them, but they
+have been seen.
+
+**Plan for the rest of Track 1** (steps, not yet done): pin the environment; take
+the ball out of ByteTrack and pick it straight from detector output; run the
+resolution test and a per-stage timing breakdown; test class-agnostic NMS; replace
+carry-forward with a forward-only Kalman filter; redo the visual check; hand-label
+spot-check on frames 300 to 749.
+
+---
+
+## 2026-09-25: Ball taken out of ByteTrack `[DECIDED]` `[RESULT]`
+
+**Change:** in `Tracker.track_frame`, detections are split by class. Players,
+goalkeepers and referees go through NMS and ByteTrack as before. The ball skips
+both: the most confident ball detection at or above a new `ball_conf` setting is
+taken straight from the detector and appended with `tracker_id = -1`. A new `device`
+setting (default `"cpu"`) keeps inference off the local GPU unless chosen.
+
+**Result, frames 0 to 299 of `08fd33_4.mp4`** (tuning range, `conf` and `ball_conf`
+0.1, imgsz 640, CPU):
+
+| Approach | Frames with a ball in tracker output |
+|---|---|
+| Old: ball through ByteTrack | 122 of 300 |
+| New: ball straight from detector | 261 of 300 (equals the raw YOLO count) |
+| New, plus carry-forward (`max_ball_miss=5`) | 291 of 300 (30 carried forward) |
+
+ByteTrack was discarding more than half of the frames where the detector saw a ball.
+Every earlier ball figure taken from tracker output undercounts detection. The
+2026-09-21 detector comparison (65.3% of frames) counted raw detections, so it is
+not affected.
+
+**Limits:** these are counts, not correct detections. Ball precision is unknown
+until the hand-label spot-check. The ball now has no identity across frames beyond
+the carry-forward; the Kalman filter (Track 1 step 6) replaces that.
+
+---
+
+## 2026-09-25: Inference resolution stays at 640; latency breakdown measured `[DECIDED]` `[RESULT]`
+
+Run in `experiments/ball_resolution_test.ipynb` on frames 0 to 299 (tuning range),
+CPU, `conf` and `ball_conf` 0.1, carry-forward off. `Tracker` now records per-stage
+timings (`last_timings`).
+
+| imgsz | Frames with ball | Mean ms | P95 ms | YOLO ms | ByteTrack ms |
+|---|---|---|---|---|---|
+| 640 | 87.0% | 42.9 | 51.2 | 35.9 | 6.1 |
+| 960 | 92.3% | 62.5 | 66.6 | 55.7 | 6.0 |
+| 1280 | 92.0% | 100.9 | 109.2 | 94.0 | 6.1 |
+
+**Decision: keep imgsz 640.** Higher resolution adds about 5 points of ball coverage
+at 960 (nothing more at 1280) for 20 ms or more per frame. Downscaling is not the
+main cause of weak ball detection.
+
+**Latency:** YOLO is about 84% of per-frame time. Split plus NMS is about 0.7 ms,
+ByteTrack about 6 ms, ball handling about 0.1 ms. This replaces the 2026-09-22
+estimate of about 13 ms for NMS plus ByteTrack. The pipeline is 42.9 ms mean at 640
+on CPU, just over the 40 ms budget, so any speed-up has to come from the detector or
+hardware.
+
+**Multiple ball detections:** 157 of 300 frames have two or more ball boxes at 0.1
+or higher. The top two are a median 3 px apart, so most are duplicate boxes on the
+same ball (the ball no longer goes through NMS), handled by keeping the most
+confident. About 10% are over 700 px apart, which are genuine false balls, left for
+the Kalman gate.
+
+**Ball gaps at 640:** 8 gaps, longest 9 frames (0.36 s), median 5. This sets the
+Kalman filter's bridging target at about 10 frames.
+
+**Limit:** counts, not correct detections. Ball precision is still unmeasured.
+
+---
+
+## 2026-09-25: Cross-class duplicate removal via a second NMS pass at IoU 0.7 `[DECIDED]` `[RESULT]`
+
+**Test** (frames 0 to 299, 640, CPU): with the original class-aware NMS, 24 frames
+had a pair of people boxes of different classes overlapping at IoU above 0.3. All 24
+were checked by eye from crops:
+- 21 were one referee boxed twice, as `referee` and as `player`, IoU 0.76 to 0.97.
+  Genuine duplicates. They inflate the player count and can give one person two IDs.
+- 3 (frames 248 to 250) were two different people, a referee directly in front of a
+  player, IoU 0.30 to 0.56. Plain class-agnostic NMS at 0.3 would delete a real
+  person there.
+
+**Decision:** keep class-aware NMS at 0.3, then run a second, class-agnostic NMS at
+IoU 0.7 (`cross_class_nms_threshold`, replaces the `nms_class_agnostic` flag). With
+it, cross-class pairs drop from 24 to 3 (the three real ones), people boxes per
+frame from 22.27 to 22.18, unique IDs from 40 to 39. Short tracks unchanged (2).
+
+**Limits:** the 0.7 threshold sits in the gap between 0.56 and 0.76 seen on 24 pairs
+from one clip, so it is a tuned value, not a general one. Two real people
+overlapping above 0.7 would lose one box. Same-class NMS at 0.3 can already merge
+two overlapping teammates; that is unchanged and unmeasured.
+
+---
+
+## 2026-09-25: Kalman filter replaces ball carry-forward `[DECIDED]` `[RESULT]`
+
+**Change:** new `pipeline/detection/ball_filter.py` (`BallKalman`), a
+constant-velocity Kalman filter on the ball centre in pixels (state x, y, vx, vy),
+forward-only so it is point-in-time correct and live-compatible. In
+`Tracker._update_ball`:
+- Each frame the filter predicts. Ball detections at or above `ball_conf` are
+  accepted only inside a gate (squared Mahalanobis distance 9.21 or less, the 99%
+  point for 2 degrees of freedom); the most confident one inside the gate updates
+  the filter.
+- If the filter has missed for 3 or more frames and a ball appears outside the gate,
+  the filter restarts on it (a kick it could not follow).
+- A missed frame reports the prediction (`interpolated=True`) with its uncertainty
+  in `tracks.data['ball_sigma']` (pixels). After `max_ball_miss` misses (now 10, set
+  from the longest 9-frame gap at 640) the ball is dropped.
+- A detected ball is reported at its detected box, with `ball_sigma` 0.
+
+**Tuning** (frames 0 to 299 only, detections cached): no ground truth, so each
+setting was scored by predicting 1 to 10 frames ahead from every detected frame and
+comparing with confident (0.35 or higher) later detections. Median error in pixels:
+
+| Frames ahead | Kalman (accel 4, meas 2) | Old carry-forward |
+|---|---|---|
+| 1 | 1.4 | 4.6 |
+| 3 | 3.6 | 13.6 |
+| 5 | 6.4 | 22.5 |
+| 9 | 13.8 | 40.1 |
+
+About 3 times more accurate at every horizon. Results were nearly flat across a grid
+of process noise 1 to 16 and measurement noise 1 to 4, so the defaults (4 and 2)
+were kept rather than picking the grid's best cell.
+
+**Gate check by eye:** 3 detections were rejected. Two (frames 259 and 260,
+confidence 0.43 and 0.52, 426 px from the prediction) were a green player's boot, a
+confident false positive; the filter correctly kept predicting the real ball,
+stationary at the goalkeeper's feet. That real ball was clearly visible in frames
+259 to 262 and not detected at all, a recall failure on a stationary ball.
+
+**Smoke test after all 2026-09-25 changes** (frames 0 to 99): 26 unique IDs (was
+30), 3 new IDs after frame 0 (was 6), 17 IDs lasting all 100 frames (was 16). Over
+frames 0 to 299, 42 frames show a predicted ball. Latency varied between 44.6 and
+53.9 ms mean on two runs of the same code, so single latency figures on this laptop
+carry roughly 10 ms of run-to-run noise.
+
+**Limits:** pixel-space velocity includes camera panning (Stage 2 homography fixes
+this). A false ball that persists 3 or more frames while the real one is unseen can
+capture the filter. Tuning used one clip.
+
+**Settings frozen for the spot-check** (Tracker defaults as of this entry): conf
+0.1, imgsz 640, NMS 0.3 class-aware then 0.7 cross-class, ball_conf 0.1, Kalman
+accel 4 / meas 2, gate 9.21, reacquire after 3, max_ball_miss 10, CPU. Frames 300
+to 749 have not been used for any of this.
+
+---
+
+## 2026-09-25: Visual review of tracker output - ID switches on overlap `[RESULT]` `[OPEN]`
+
+Rohan watched `experiments/runs/tracker_visual_check.avi` (frames 0 to 299, all
+2026-09-25 changes in). Only finding: when players overlap, typically while
+contesting the ball, their track IDs sometimes swap. Frame numbers and frequency not
+recorded; not yet counted.
+
+**Why it happens:** ByteTrack matches by box position and overlap only, so it cannot
+tell overlapping players apart.
+
+**Considered: shirt colour.** The reference repo (`abdullahtarek/football_analysis`)
+was checked: its tracker does not use colour; it assigns team colour after tracking
+and caches it per track ID, so a swap carries the wrong team forward. Colour can
+prevent swaps between opposing players, not between teammates. For the planned
+team-level factors only cross-team swaps change the result, since a team total is
+unchanged by two teammates swapping IDs. Candidate design (not built): per-frame team
+label from shirt colour, one tracker per team, and a running vote per ID so a sudden
+team flip flags a likely switch. This also means the research plan's "one fit per
+track ID, then reuse" for team assignment should become per-frame labels with a vote.
+
+**Next:** count switches (and how many cross teams) as part of the hand-label
+spot-check, then decide whether team-split tracking is built now or in Stage 3.
+
+---
+
 ## Still open (not decided as of 2026-09-22)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
@@ -708,7 +937,9 @@ arXiv 2404.11335).
 - Manual spot-check on the DFL clip (Stage 1 quality gate): still not started. High
   priority now that tracker architecture is locked, since per-frame detection accuracy
   becomes critical for live streaming (no batch reprocessing fallback).
-- Tracker bugs from the 2026-09-22 review: not yet fixed.
+- Tracker bugs from the 2026-09-22 review: fixed as of 2026-09-25, including the
+  NMS test and the Kalman ball filter (see the 2026-09-25 entries). Remaining Stage 1
+  gates: visual review of the 300-frame tracker video, and the hand-label spot-check.
 - Power analysis (matches needed to detect the target rank-IC): not yet done, and it
   may force a revision of the success criteria.
 - Kalshi and Polymarket fee schedules: third-party figures only, official schedules
