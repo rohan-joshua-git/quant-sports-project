@@ -21,3 +21,6 @@ Tester video/
 
 # Roboflow downloaded datasets (redistribution terms unresolved for storing raw data in repo)
 experiments/*-*/
+
+# Hand-label spot-check: derived frames and labels (see experiments/spotcheck.py)
+experiments/spotcheck/

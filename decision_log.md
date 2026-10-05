@@ -913,7 +913,107 @@ spot-check, then decide whether team-split tracking is built now or in Stage 3.
 
 ---
 
-## Still open (not decided as of 2026-09-22)
+## 2026-10-05: Hand-label spot-check of the Stage 1 tracker - results `[RESULT]`
+
+**Method.** `experiments/spotcheck.py`, run on frames 300 to 749 of `08fd33_4.mp4`
+(held out from all tuning). Frozen tracker settings from commit `f67433a` (as listed
+in the 2026-09-25 Kalman entry), run from frame 0 so the tracker reached frame 300
+warmed up. Rohan labelled blind: the ball labeller never showed the tracker's ball,
+and the people labeller showed boxes but not predicted classes.
+- Ball: 100 evenly spaced frames, ball centre clicked at full resolution (zoomed).
+  96 visible, 1 not visible, 3 unsure (excluded).
+- People: 20 frames, true class of all 452 tracker boxes, plus clicks on real people
+  with no box.
+- ID switches: the 450-frame ID video reviewed, each error marked.
+Labels and frames are in `experiments/spotcheck/` (gitignored); scores in its
+`results.json`.
+
+**People (strong):**
+
+| Measure | Result | 95% Wilson interval |
+|---|---|---|
+| Box is a real person (precision) | 451/452 = 99.8% | 98.8 to 100% |
+| Real person got a box (recall) | 451/464 = 97.2% | 95.3 to 98.4% |
+| Class correct, as labelled | 443/451 = 98.2% | 96.5 to 99.1% |
+
+Referee boxed as player: 0; player boxed as referee: 1. The referee double-boxing
+fixed by the 2026-09-25 cross-class NMS pass did not recur. Label review: 5 boxes on
+one track (ID 60) were labelled `player` but the crops show the orange-kit
+goalkeeper in the goalmouth wearing gloves, so the model's `goalkeeper` was right. If
+those 5 labels are corrected, class accuracy is 448/451 = 99.3%; the label file was
+not changed (Rohan has not confirmed). The black-kit goalkeeper (ID 27) was called
+`player` twice by the model, which the labels catch correctly.
+
+**Ball (weak):**
+
+| Measure | Result | 95% Wilson interval |
+|---|---|---|
+| Detector precision (within 10 px) | 52/57 = 91.2% | 81.1 to 96.2% |
+| Detector recall (within 10 px) | 52/96 = 54.2% | 44.2 to 63.8% |
+| Ball found incl. Kalman predictions, within 10 px | 61/96 = 63.5% | 53.6 to 72.5% |
+| Ball found incl. Kalman predictions, within 20 px | 70/96 = 72.9% | 63.3 to 80.8% |
+| Truth inside the 2-sigma circle (expected about 95%) | 20/39 = 51.3% | 36.2 to 66.1% |
+
+Median error of correct detections: 2.8 px. Results at 10 and 20 px radius are
+identical for the detector: detections are either right or far off.
+
+**Main failure: persistent false ball captured the Kalman filter.** From about frame
+617 to 731 (about 4.5 s) the detector repeatedly called one distant green-kit
+player's body a ball (confidence 0.1 to 0.39). Those detections kept landing inside
+the gate, so the filter never counted a miss, never triggered the reacquire rule, and
+ignored the real ball. All 5 wrong detections and most large prediction errors (up
+to about 870 px) fall in this episode. The gate handles one-off false balls (the boot
+at frame 259 on 2026-09-25) but not a false ball that keeps reappearing. Separately,
+`ball_sigma` is overconfident: even before the capture (frames up to 613), the truth
+was inside the 2-sigma circle in only 17/23 predicted frames (74%).
+
+**ID errors:** over 18 s, 0 cross-team swaps, 0 teammate swaps, 7 "other" ID errors
+(frames 300 twice, 307, 322, 354, 362, 527). Their nature was not recorded. The swaps
+on overlap seen in frames 0 to 299 on 2026-09-25 were not marked as swaps here.
+
+**Comparison with tuning frames.** Detector recall here (54%) is far below the share
+of tuning frames with any ball detection (87%), but these are not the same measure:
+the tuning figure counted detections of anything, and 41 of the 100 held-out ball
+frames were Kalman predictions against about 14% in tuning. The held-out stretch is
+harder for the detector, and the capture episode adds to it.
+
+**Limits:** one clip, one match, one camera, one labeller who also built the tracker.
+Neighbouring frames are correlated, so the intervals are narrower than the truth.
+"Within 10 px" and the duplicate rule are definitions. Not a HOTA score; the
+SoccerNet-Tracking proxy check is still not done (NDA unread).
+
+**Consequence: frames 300 to 749 are now spent.** Any fix motivated by these results
+(for example rejecting ball detections that sit on a player's torso, or preferring a
+confident detection outside the gate over weak ones inside it) cannot be validated on
+these frames. That would need fresh footage.
+
+---
+
+## 2026-10-05: Stage 1 closed as "validated with known limits" `[DECIDED]`
+
+Stage 1 (detection and tracking) is closed, with the spot-check above as its measured
+error rates. No numeric pass threshold was set in advance, which is a process gap:
+this is a judgement that the error rates are known and usable, not a pass against a
+pre-registered bar. Future stages should set their acceptance criteria before
+measuring.
+
+- Player, goalkeeper and referee detection and classification: strong (about 97 to
+  100%). Usable for team-level features.
+- Ball: detected in about half the frames, and a persistent false positive can
+  capture the ball filter for seconds. Ball-dependent features (possession,
+  ball-local pressure) must be treated as noisy, and the CV-error perturbation test in
+  the final evaluation must use these measured rates.
+- Carried forward as open: ball-capture fix (needs fresh footage to validate);
+  overconfident `ball_sigma`; ID errors (team-split tracking candidate, see the
+  2026-09-25 visual-review entry); SoccerNet-Tracking HOTA (blocked on NDA);
+  latency over budget on CPU (GPU needed for live).
+
+Next per the research plan: the Track 4 power analysis, then Track 2 market terms and
+fees, then Stage 2 calibration.
+
+---
+
+## Still open (not decided as of 2026-09-22; last updated 2026-10-05)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
   access (see above).
@@ -931,15 +1031,16 @@ spot-check, then decide whether team-split tracking is built now or in Stage 3.
 - Git repository is initialized (initial commit `35cff10`). `prereg/`,
   `factor_log.md`, and `data_dictionary.md` not yet created.
 - Trained detector was run on the cached DFL clip on 2026-09-21 (counts and visual
-  review only). Ball precision and referee confusion are still unmeasured; a manual
-  spot-check is the open next step.
+  review only). Ball precision and referee confusion measured by the 2026-10-05
+  spot-check (see that entry).
 - Out-of-sample holdout set not yet locked.
-- Manual spot-check on the DFL clip (Stage 1 quality gate): still not started. High
-  priority now that tracker architecture is locked, since per-frame detection accuracy
-  becomes critical for live streaming (no batch reprocessing fallback).
+- Manual spot-check on the DFL clip (Stage 1 quality gate): done 2026-10-05. Stage 1
+  closed as validated with known limits (see those entries).
 - Tracker bugs from the 2026-09-22 review: fixed as of 2026-09-25, including the
-  NMS test and the Kalman ball filter (see the 2026-09-25 entries). Remaining Stage 1
-  gates: visual review of the 300-frame tracker video, and the hand-label spot-check.
+  NMS test and the Kalman ball filter (see the 2026-09-25 entries).
+- Ball filter captured by a persistent false positive, and overconfident
+  `ball_sigma` (2026-10-05 spot-check): open; a fix needs fresh footage to validate.
+- ID errors on overlap: open; team-split tracking is the candidate fix.
 - Power analysis (matches needed to detect the target rank-IC): not yet done, and it
   may force a revision of the success criteria.
 - Kalshi and Polymarket fee schedules: third-party figures only, official schedules

@@ -38,14 +38,25 @@ Phase 0 (scoping) — in progress, not yet closed. Solo project.
   Executed 2026-09-20 on Colab (T4, about 32 minutes, 100 epochs): test-split mAP50
   0.772 / mAP50-95 0.495, strong for player/goalkeeper/referee but weak for the ball
   (mAP50 about 0.31, recall about 0.36). Measured on Roboflow's images only. Run on
-  the cached DFL clip 2026-09-21 (counts and visual review only, no ground truth).
-  Detail in `decision_log.md`.
-- Tracker architecture (2026-09-22): frame-by-frame `Tracker` class in
-  `pipeline/detection/tracker.py` (YOLO, then NMS, then `supervision` ByteTrack, plus
-  a carry-forward ball fill-in), chosen for live-stream compatibility. Measured about
-  58 ms/frame mean on local CPU, over the 40 ms budget at 25 fps. Stage 1 is built
-  but **not yet validated**: a same-day review found open bugs (see Open next steps)
-  and the hand-label spot-check has not been done.
+  the cached DFL clip 2026-09-21 (counts and visual review only), then hand-labelled
+  on 2026-10-05 (see the Stage 1 bullet below). Detail in `decision_log.md`.
+- Tracker architecture (2026-09-22, revised 2026-09-25): frame-by-frame `Tracker`
+  class in `pipeline/detection/tracker.py`, chosen for live-stream compatibility.
+  People: YOLO, class-aware NMS at 0.3, a second cross-class NMS at 0.7 (removes
+  referee/player double boxes), then `supervision` ByteTrack. Ball: kept out of
+  ByteTrack (which was discarding over half the ball detections), picked from
+  detector output and tracked by a forward-only Kalman filter
+  (`pipeline/detection/ball_filter.py`) with a gate and a `ball_sigma` uncertainty.
+  imgsz 640. About 43 to 54 ms/frame mean on local CPU (YOLO about 84%), over the
+  40 ms budget at 25 fps; GPU needed for live.
+- **Stage 1 closed 2026-10-05 as "validated with known limits"** (no pass threshold
+  was pre-set; future stages should set one before measuring). Hand-label spot-check
+  on held-out frames 300 to 749: people precision 99.8%, recall 97.2%, class correct
+  98.2%; ball detector precision 91.2% but recall only 54.2%; a persistent false
+  positive (a green-kit player's body) captured the ball filter for about 4.5 s, and
+  `ball_sigma` is overconfident (truth inside 2 sigma 51% instead of 95%). Frames 300
+  to 749 are now spent for tuning; fixes need fresh footage. SoccerNet-Tracking HOTA
+  still not done (NDA unread).
 - Research plan and edge hypothesis (2026-09-22, full detail in `decision_log.md`):
   in-play prices absorb goals swiftly and fully (Croxson & Reade 2014), and broadcast
   video lags the live event, so any edge must come from **slow state estimation**
@@ -143,9 +154,13 @@ IC/FDR/PBO on the development set.
 
 ## Pipeline architecture (conceptual stages)
 Code layout: real pipeline code lives in `pipeline/<stage>/` (Stage 1 is
-`pipeline/detection/`: `train.ipynb`, `evaluation.ipynb`, `tracker.py`; shared
-drawing helpers in `pipeline/common/drawing.py`). `experiments/` is reserved for
-diagnostic spikes.
+`pipeline/detection/`: `train.ipynb`, `evaluation.ipynb`, `tracker.py`,
+`ball_filter.py`; shared drawing helpers in `pipeline/common/drawing.py`).
+`experiments/` is reserved for diagnostic spikes (including `spotcheck.py`, the
+hand-label tool; its output folder `experiments/spotcheck/` is gitignored). Package
+versions are pinned in `requirements.txt` (`sv.ByteTrack` is removed in supervision
+0.31). This machine's OpenCV has no window support (`opencv-python-headless` is also
+installed), so interactive tools use matplotlib with the TkAgg backend.
 
 1. Detection & tracking (player/ball/referee) — validated via HOTA against
    SoccerNet-Tracking, plus manual spot-check on actual DFL footage.
@@ -184,25 +199,17 @@ diagnostic spikes.
 Research plan (2026-09-22, see `decision_log.md`): four parallel tracks feeding one
 final test. Tracks 2 and 3 do not need the unresolved video source.
 
-- **Track 1: finish Stage 1 properly (current focus).**
-  - Fix the tracker bugs from the 2026-09-22 review: interpolated ball uses
-    `class_id = 2` (player) instead of 0 (ball); hardcoded `tracker_id = 1` can
-    collide with real IDs; carry-forward has no maximum age; the visual-check cell
-    draws raw detections instead of `tracks`; the persistence metric cannot detect ID
-    switches; `with_nms()` is class-aware by default (test `class_agnostic=True`);
-    the `Tracker` instance is not reset between notebook cells.
-  - Redo the visual check on tracked output, with ID labels drawn under each ring.
-  - Replace the carry-forward ball with a Kalman filter (position plus uncertainty).
-  - Manual spot-check of the trained detector
-    (`pipeline/detection/football_yolo26n_best.pt`) on the cached DFL clip:
-    hand-label a small frame sample to get real ball precision/recall and
-    referee-confusion figures. A 2026-09-21 comparison (counts and visual review, no
-    ground truth) showed ball detected in 65% of frames against 11% for the stock
-    model, and the `tv` and sideline-staff problems gone. The measured error rates
-    are reused later for the CV-error perturbation test.
-  - Annotation polish (lower priority): try ring width based on box height (e.g. `a`
-    about 0.4 of box height) to reduce flicker; per-ID moving average for ring size
-    and per-ID majority vote on class to stop label flips.
+- **Track 1: Stage 1. Done 2026-10-05** (review bugs fixed, ball out of ByteTrack,
+  Kalman ball filter, cross-class NMS, visual check, hand-label spot-check; see the
+  Stage 1 bullet in Decisions and `decision_log.md`). Carried forward, none blocking:
+  - Ball filter capture by a persistent false positive, and overconfident
+    `ball_sigma`. Candidate fixes: reject ball detections on a player's upper body;
+    let a confident detection outside the gate override weak ones inside it. Must be
+    validated on fresh footage, not frames 300 to 749.
+  - ID errors on overlap: count by type first; candidate fix is team-split tracking
+    (per-frame team label from shirt colour, one tracker per team, vote per ID).
+  - SoccerNet-Tracking HOTA proxy check (blocked on the NDA).
+  - Annotation polish (low priority): ring width from box height; per-ID smoothing.
 - **Track 2: market event study.** Check Kalshi/Polymarket data ToS and official fee
   schedules first. Then, on 2024+ in-play soccer prices: speed and completeness of
   price reaction to goals and red cards (Croxson & Reade method), which also measures
@@ -211,13 +218,14 @@ final test. Tracks 2 and 3 do not need the unresolved video source.
 - **Track 3: outcome baseline.** Dixon-Coles pre-match strength with partial-pooling
   shrinkage, Dixon-Robinson in-play goal hazard, Monte Carlo of the remaining match.
   Check licensing of the historical results source first.
-- **Track 4: pre-registration.** Power analysis first. Then write the H0 to H4
+- **Track 4: pre-registration (next focus).** Power analysis first. Then write the H0 to H4
   ladder and a small factor family (5 to 10 slow state factors, including the
   forward-only HMM state) into `prereg/`, lock the holdout, and fix the latency grid
   (2, 5, 10, 30 seconds).
-- **Stages 2 to 4 before the final test:** homography calibration, GMM team
-  assignment from jersey color (one fit per track ID, then reuse), re-ID, possession,
-  PIT features.
+- **Stages 2 to 4 before the final test:** homography calibration, team assignment
+  from jersey colour (per-frame label with a running vote per track ID, not one fit
+  per ID then reuse, which would carry an ID switch forward; see the 2026-09-25
+  visual-review entry), re-ID, possession, PIT features.
 - **Final test:** factors neutralized against the baseline probability; IC and IC
   decay by horizon, match-clustered SEs, Diebold-Mariano clustered by match, BH,
   combinatorial purged CV, PBO, Deflated Sharpe Ratio; CV-error perturbation and

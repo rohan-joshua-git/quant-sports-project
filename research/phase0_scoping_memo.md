@@ -1,9 +1,9 @@
 # Phase 0 Scoping Memo: Quant Sports Trading Project
 
 **Document ID:** QSP-P0-001
-**Version:** 1.3
-**Date:** 2026-09-21 (originally issued 2026-09-18; revised 2026-09-18,
-2026-09-20 and 2026-09-21, see Revision History)
+**Version:** 1.4
+**Date:** 2026-10-05 (originally issued 2026-09-18; revised 2026-09-18,
+2026-09-20, 2026-09-21 and 2026-10-05, see Revision History)
 **Author:** Rohan
 **Distribution:** Internal
 **Status:** Draft. Phase 0 is not yet closed. Sections marked `[DECIDED]` are locked
@@ -30,6 +30,13 @@ downstream work until closed.
   1 updated). The evaluation discipline and Section 4 success criteria are
   unchanged. Live-system requirements (video source, latency, execution,
   regulatory exposure) are open and tracked in the log, not yet added to Section 5.
+- v1.4 (2026-10-05): Synced Section 6 (Stage 1) with `decision_log.md`. The memo
+  still said the detector was "not yet checked on DFL footage"; since then the
+  tracker architecture was fixed (2026-09-22, revised 2026-09-25) and a hand-label
+  spot-check on held-out DFL frames closed Stage 1 as validated with known limits
+  (2026-10-05). The 2026-09-22 research plan and edge hypothesis (H0 to H4 ladder,
+  slow state estimation rather than event detection) are recorded in the log and
+  `CLAUDE.md` and are not duplicated here. No `[DECIDED]` scope decision changed.
 
 ---
 
@@ -281,8 +288,13 @@ determine how much footage can realistically be processed.
    as players); the resulting decision to fine-tune on a Roboflow dataset instead of
    generic weights is logged in `decision_log.md`, not repeated here. That run was
    executed on 2026-09-20: strong player, goalkeeper, and referee detection on the
-   Roboflow test split, but weak ball detection, and not yet checked on DFL footage.
-   Full results are in `decision_log.md`.
+   Roboflow test split, but weak ball detection. A hand-label spot-check on held-out
+   frames of the cached DFL clip (2026-10-05) measured people detection at about 97
+   to 100% (precision 99.8%, recall 97.2%, class correct 98.2%) and the ball at 91.2%
+   precision but 54.2% recall, with the ball filter vulnerable to capture by a
+   persistent false positive. Stage 1 is closed as validated with known limits; the
+   SoccerNet-Tracking HOTA proxy check is still outstanding. Full results are in
+   `decision_log.md`.
 2. **Calibration (pitch homography).** Pixel-space coordinates are mapped to
    real-world pitch coordinates. This step is required before any speed or distance
    figure is meaningful.

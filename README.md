@@ -107,17 +107,18 @@ current constraints. Where they disagree, the log wins.
 
 ## Current state and known limitations
 
-Stage 1 exists and is **not yet validated**:
+Stage 1 (detection and tracking) is **closed as validated with known limits**:
 
-- A YOLO26n detector fine-tuned for player, goalkeeper, referee and ball. Strong on
-  people, weak on the ball.
-- ByteTrack tracking in a frame-by-frame design, chosen because a live pipeline cannot
-  wait for a batch to fill.
-- Open problems: weak ball detection, identity switches when players overlap, and
-  per-frame latency above the real-time budget on CPU.
-- The manual hand-labelling check that would give real error bars on this footage has
-  not been done, so quoted detector metrics come from a third-party dataset's test
-  split, not from the footage actually used.
+- A YOLO26n detector fine-tuned for player, goalkeeper, referee and ball, with
+  ByteTrack for people and a separate Kalman filter for the ball, in a frame-by-frame
+  design, chosen because a live pipeline cannot wait for a batch to fill.
+- A blind hand-labelling check on held-out frames of one clip measured people
+  detection at about 97 to 100% and the ball at 91% precision but only 54% recall.
+- Open problems: weak ball detection, a ball filter that a persistent false positive
+  can capture, identity errors when players overlap, and per-frame latency above the
+  real-time budget on CPU.
+- These figures come from one clip of one match, labelled by the author. A proxy
+  check on an independent labelled tracking dataset has not been done yet.
 
 Major open blockers are listed in `CLAUDE.md`, including the choice of video source and
 the mismatch between the era of available video and the era of available market price
