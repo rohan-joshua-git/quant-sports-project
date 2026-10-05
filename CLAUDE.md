@@ -123,18 +123,36 @@ Market price baseline must be the price actually tradeable at time t, never a
 revised/settled price — the sports-analytics equivalent of lookahead bias.
 
 ## Success criteria (draft — must be formally pre-registered before any factor testing)
-- Rank-IC ≥ 0.02–0.03, Newey-West t ≥ 2 (minute-level observations within a match are
-  autocorrelated; effective N is closer to match count than minute count).
-- Factors surviving BH-FDR at q = 0.05 across the full family of factors tested — every
-  factor tried must be logged, including failures, or the correction is invalid.
+- **Statistical criterion (revised 2026-10-05, replaces "rank-IC ≥ 0.02–0.03, t ≥ 2"):**
+  - Primary test: per-minute Poisson goal-rate model. Factor measured at minute t-1,
+    goals in minute t, baseline expected rate (score, time, team strength) as an
+    offset; score/Wald test of the factor coefficient beta with standard errors
+    clustered by match.
+  - Success is stated as a **minimum detectable effect (MDE)**: before any factor
+    test, fix the number of matches and report the smallest goal-rate shift per SD of
+    the factor that the test detects with 80% power (from `prereg/power_analysis.ipynb`,
+    step 7). A null result only rules out effects larger than the MDE. Reference
+    points (phi 0.95, base / adjusted for BH, holdout, CV error): 500 matches 8.7% /
+    15.3%; 1,000 matches 6.1% / 10.6%.
+  - Secondary, reported but not the pass criterion: rank-IC at a 5-minute horizon
+    with match-clustered errors (effective N is about matches x 18, not minutes).
+- Factor family capped at **5** factors; each must survive BH-FDR at q = 0.05 across
+  the full family tested. Every factor tried must be logged, including failures, or
+  the correction is invalid.
 - PBO ≤ 20%.
 - Positive net edge after commission + slippage, with a minimum Sharpe-like ratio on
   match-level P&L, validated across multiple seasons/competitions out-of-sample.
 - Max drawdown tolerance: not yet numerically set. Planned method: a halt level from a
   match-block bootstrap of backtest P&L (e.g. its 99th-percentile drawdown).
-- Power analysis still to be done: if the matches available cannot detect rank-IC of
-  0.02 at Newey-West t of at least 2, these criteria must be revisited before building
-  further.
+- Power analysis done 2026-10-05 (`prereg/power_analysis.ipynb`): the old bar,
+  rank-IC 0.02 at t ≥ 2 with 80% power, needed about 1,100 to 5,600 matches best
+  case (about 3.4 times more adjusted), against about 500 in the largest archive.
+  That is why the statistical criterion above was revised.
+- Still open: holdout confirmation rule. A 30% holdout of 500 matches is 150 matches,
+  where a confirmation test at t ≥ 2 only has power for large effects; the rule (for
+  example, same sign plus a one-sided p below 0.10, or pooled testing) must be
+  pre-registered before any factor test. Number of matches depends on the open
+  video-source decision.
 
 ## Roles
 Solo project. "Independent validation" enforced procedurally via a locked holdout set
@@ -218,8 +236,11 @@ final test. Tracks 2 and 3 do not need the unresolved video source.
 - **Track 3: outcome baseline.** Dixon-Coles pre-match strength with partial-pooling
   shrinkage, Dixon-Robinson in-play goal hazard, Monte Carlo of the remaining match.
   Check licensing of the historical results source first.
-- **Track 4: pre-registration (next focus).** Power analysis first. Then write the H0 to H4
-  ladder and a small factor family (5 to 10 slow state factors, including the
+- **Track 4: pre-registration (current focus).** Power analysis done 2026-10-05;
+  statistical success criterion revised the same day (MDE, per-minute goal-rate test,
+  5 factors). Next: the data-source strategy (cheap tests first: Track 2 and an
+  event-data signal check, weighed 2026-10-05, not decided). Then write the H0 to H4
+  ladder and a small factor family (at most 5 slow state factors, including the
   forward-only HMM state) into `prereg/`, lock the holdout, and fix the latency grid
   (2, 5, 10, 30 seconds).
 - **Stages 2 to 4 before the final test:** homography calibration, team assignment

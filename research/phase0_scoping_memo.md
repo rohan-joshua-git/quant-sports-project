@@ -1,9 +1,9 @@
 # Phase 0 Scoping Memo: Quant Sports Trading Project
 
 **Document ID:** QSP-P0-001
-**Version:** 1.4
+**Version:** 1.5
 **Date:** 2026-10-05 (originally issued 2026-09-18; revised 2026-09-18,
-2026-09-20, 2026-09-21 and 2026-10-05, see Revision History)
+2026-09-20, 2026-09-21 and twice on 2026-10-05, see Revision History)
 **Author:** Rohan
 **Distribution:** Internal
 **Status:** Draft. Phase 0 is not yet closed. Sections marked `[DECIDED]` are locked
@@ -37,6 +37,11 @@ downstream work until closed.
   (2026-10-05). The 2026-09-22 research plan and edge hypothesis (H0 to H4 ladder,
   slow state estimation rather than event detection) are recorded in the log and
   `CLAUDE.md` and are not duplicated here. No `[DECIDED]` scope decision changed.
+- v1.5 (2026-10-05): Section 4 statistical criterion revised after the power
+  analysis: a minimum detectable effect for a per-minute goal-rate test replaces the
+  fixed rank-IC bar, and the factor family is capped at 5. Section 4 remains
+  `[DRAFT]` until pre-registration; the holdout confirmation rule and the number of
+  matches (which depends on the open data-source question) are not yet fixed.
 
 ---
 
@@ -191,14 +196,28 @@ yet observable as of its own timestamp.
 ## 4. Success Criteria `[DRAFT; must be formally pre-registered, in writing, before
 the first factor test is run]`
 
-- Rank-IC of at least 0.02 to 0.03, with a Newey-West t-statistic of at least 2.
-  Minute-level observations within a single match are highly autocorrelated, so the
-  effective sample size for significance purposes is closer to the number of
-  independent matches than to the number of minute-level observations.
-- Factors must survive Benjamini-Hochberg false discovery rate correction at q = 0.05,
-  applied across the complete family of factors tested. Every factor tried must be
-  logged, including negative results; the correction is statistically meaningless
-  without the complete family.
+- **Statistical criterion (revised 2026-10-05).** The original criterion, a rank-IC
+  of at least 0.02 to 0.03 with a Newey-West t-statistic of at least 2, was replaced
+  after a power analysis (`prereg/power_analysis.ipynb`) showed it needs about 1,100
+  to 5,600 matches in the best case, against about 500 in the largest archive
+  considered. The primary test is now a per-minute Poisson goal-rate model (factor at
+  minute t-1, goals in minute t, the baseline expected rate as an offset, standard
+  errors clustered by match). Success is stated as a minimum detectable effect: the
+  number of matches is fixed before any factor test, together with the goal-rate
+  shift per standard deviation of the factor that the test detects with 80% power,
+  and a null result only rules out effects larger than that (for example, about 8.7%
+  at 500 matches in the base case, 15.3% after multiple-testing, holdout and
+  measurement-error adjustments). Rank-IC at a 5-minute horizon, with match-clustered
+  errors, is reported as a secondary statistic. Minute-level observations within a
+  match are highly autocorrelated: a match carries only about 18 effectively
+  independent observations for a 5-minute target.
+- The factor family is capped at 5. Factors must survive Benjamini-Hochberg false
+  discovery rate correction at q = 0.05, applied across the complete family of
+  factors tested. Every factor tried must be logged, including negative results; the
+  correction is statistically meaningless without the complete family.
+- The holdout confirmation rule is not yet set: with a 30% holdout of about 500
+  matches, a confirmation test at t of 2 or more only has power for large effects.
+  It must be fixed before the first factor test.
 - Probability of Backtest Overfitting (PBO) of 20% or lower. A threshold below 50%,
   per Bailey and Lopez de Prado, indicates only that a result is not obviously
   overfit, not that it is robust; 20% is set as the working bar for this project.

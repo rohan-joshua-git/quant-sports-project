@@ -1013,6 +1013,126 @@ fees, then Stage 2 calibration.
 
 ---
 
+## 2026-10-05: Power analysis - rank-IC 0.02 is not detectable with archival video `[RESULT]`
+
+Track 4 step 1, in `prereg/power_analysis.ipynb` (simulation only, no real data,
+fixed seed). Simulated matches: a standardised AR(1) factor per minute (persistence
+phi 0.8 / 0.95 / 0.99), goals at about 1.4 per team per match with team A's rate
+multiplied by exp(beta x factor) and team B's by exp(-beta x factor). Targets: goal
+difference over the next 5 minutes, next 15 minutes, or rest of match. Test as in
+the draft criteria: pooled rank-IC, match-clustered t, success at t of 2 or more.
+
+**Effective information per match.** Minutes are far from independent (slow factor,
+overlapping target windows). Effective independent observations per match at phi
+0.95: about 18 (5-minute target), 7 (15-minute), 4 (rest of match), out of about 85
+minute-rows. Naive standard errors that treat minutes as independent produced 17 to
+33% false positives at t of 2 or more under no effect; clustered errors gave 2.5 to
+3.4% (nominal 2.3%), confirming the clustering requirement.
+
+**Matches needed for 80% power, phi 0.95 (base case / worst case):**
+
+| Target | IC 0.02 | IC 0.03 | IC 0.05 |
+|---|---|---|---|
+| Next 5 min | 1,107 / 3,725 | 492 / 1,656 | 177 / 596 |
+| Next 15 min | 3,030 / 10,195 | 1,347 / 4,531 | 485 / 1,631 |
+| Rest of match | 5,574 / 18,756 | 2,478 / 8,336 | 892 / 3,001 |
+
+Worst case multiplies by about 3.4: BH across 10 factors with one real effect
+(1.65), a 30% locked holdout (1.43), and CV measurement error at reliability 0.7
+(1.43). A brute-force check of the formula gave 75% simulated power where 80% was
+predicted, so the base numbers are, if anything, slightly optimistic.
+
+**In football terms:** a factor that shifts goal rates by about 11% per standard
+deviation (beta 0.1) produces a rank-IC of only about 0.03 to 0.04; IC 0.02 is
+roughly a 5 to 6% shift. Goals are rare, so even sizeable effects give small ICs.
+
+**Rank-IC is not the most powerful test here.** A direct test of the goal-rate model
+(score test, the same idea as a log-loss comparison) needed about 20 to 25% fewer
+matches than 5-minute rank-IC (beta 0.1: 321 against 409 matches).
+
+**Against available data:** the largest archive considered, SoccerNet's main corpus,
+has about 500 matches (access and usable minutes unverified). With 500 matches the
+smallest IC detectable at 80% power is about 0.030 (5-minute target), 0.049
+(15-minute), 0.067 (rest of match), in the base case; about 1.8 times larger in the
+worst case.
+
+**Conclusion:** the draft criterion "rank-IC of 0.02 to 0.03 at t of 2 or more" cannot
+be met with any archival video source identified so far. Data volume, not method, is
+now the binding constraint. Per CLAUDE.md, the success criteria must be revisited
+before building further.
+
+**Limits:** the goal model is a simplification (independent minutes, log-linear
+tilt, full 90 minutes visible; broadcast replays and close-ups lose minutes and make
+it worse). Market-price targets were not simulated; they move continuously and may
+carry more information per match, which needs Track 2 data to quantify.
+
+## 2026-10-05: Success-criteria revision after the power analysis `[OPEN]`
+
+Recommendations, not yet decided by Rohan:
+1. Replace the fixed "IC 0.02" bar with a pre-registered **minimum detectable
+   effect**: state the number of matches, the effect size the test has 80% power for,
+   and that a null result only rules out effects larger than that.
+2. Primary horizon 5 minutes; primary statistic a likelihood-based goal-rate test
+   (log-loss comparison against the baseline, clustered by match), rank-IC reported
+   as secondary.
+3. Keep the factor family small (5 rather than 10) to limit the BH cost.
+4. Weigh match **volume** heavily in the video-source decision, and consider whether
+   market-price targets (forward-looking phase) offer more power once Track 2 data
+   exists.
+
+---
+
+## 2026-10-05: Statistical success criterion revised `[DECIDED]`
+
+Decided by Rohan, following the power analysis and the `[OPEN]` recommendations
+entry above (which this resolves, except item 4, the data-source question). The
+draft criterion "rank-IC of 0.02 to 0.03 at Newey-West t of 2 or more" is replaced.
+Lowering the bar instead (dropping BH, accepting weaker t) was considered and
+rejected: loosening the rules after seeing the power numbers is the self-deception
+the process exists to prevent.
+
+**New criterion:**
+1. **Primary test:** per-minute Poisson goal-rate model. Factor measured at minute
+   t-1, goals in minute t, the baseline expected rate (score, time, team strength) as
+   an offset; test of the factor coefficient beta with match-clustered standard
+   errors.
+2. **Success stated as a minimum detectable effect:** before any factor test, fix
+   the number of matches and report the goal-rate shift per SD of the factor that the
+   test detects with 80% power. A null result only rules out effects larger than
+   that.
+3. **Rank-IC** at a 5-minute horizon kept as a secondary, reported statistic.
+4. **Factor family capped at 5**, BH-FDR at q = 0.05 across the full family.
+PBO, the economic criteria and the drawdown method are unchanged.
+
+**Why per minute, not the recommended 5-minute horizon.** The 5-minute
+recommendation came from comparing rank-IC horizons. Measuring the likelihood test
+directly (`prereg/power_analysis.ipynb`, step 7) showed the per-minute version needs
+78% of the matches that non-overlapping 5-minute blocks need (information per match
+1.53 against 1.35), because it always uses the freshest factor value. Both had
+correct false-positive rates (2.0% and 1.9% against a nominal 2.3%).
+
+**MDE of the primary test** (phi 0.95, goal-rate shift per SD, base / adjusted for
+BH across 5 factors, a 30% holdout, and factor reliability 0.7):
+
+| Matches | 100 | 200 | 300 | 500 | 1,000 | 2,000 |
+|---|---|---|---|---|---|---|
+| Base | 20.4% | 14.0% | 11.3% | 8.7% | 6.1% | 4.2% |
+| Adjusted | 37.6% | 25.3% | 20.2% | 15.3% | 10.6% | 7.4% |
+
+**Still open:**
+- Holdout confirmation rule. A 30% holdout of 500 matches is 150 matches, where a
+  confirmation test at t of 2 or more only has power for large effects. The rule
+  must be pre-registered before any factor test.
+- The number of matches, which depends on the data-source strategy. Options weighed
+  on 2026-10-05 (archival video, forward capture, an event-data signal check first,
+  the Track 2 market study as a main result); recommendation was cheap tests first
+  (Track 2 plus an event-data check) before the video source and Stages 2 to 4.
+  Not decided.
+- The MDE assumes the simplified goal model in the notebook; broadcast minutes lost
+  to replays and close-ups would raise it.
+
+---
+
 ## Still open (not decided as of 2026-09-22; last updated 2026-10-05)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
@@ -1041,7 +1161,8 @@ fees, then Stage 2 calibration.
 - Ball filter captured by a persistent false positive, and overconfident
   `ball_sigma` (2026-10-05 spot-check): open; a fix needs fresh footage to validate.
 - ID errors on overlap: open; team-split tracking is the candidate fix.
-- Power analysis (matches needed to detect the target rank-IC): not yet done, and it
-  may force a revision of the success criteria.
+- Power analysis: done 2026-10-05; statistical success criterion revised the same
+  day (see those entries). Holdout confirmation rule and the data-source strategy
+  are still open.
 - Kalshi and Polymarket fee schedules: third-party figures only, official schedules
   not yet read.
