@@ -24,3 +24,6 @@ experiments/*-*/
 
 # Hand-label spot-check: derived frames and labels (see experiments/spotcheck.py)
 experiments/spotcheck/
+
+# SoccerNet-Tracking proxy check: downloaded frames, detections, scores (see experiments/soccernet_eval.py)
+experiments/soccernet/

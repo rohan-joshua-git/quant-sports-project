@@ -4,10 +4,13 @@
 Institutional-grade quant research project applying equities-style factor methodology
 (point-in-time discipline, cross-sectional z-scoring, IC / Newey-West / BH-FDR / PBO
 evaluation) to sports, using computer-vision-derived features as the data-generation
-layer in place of fundamentals data. Primary goal (changed 2026-09-21): live in-play
-trading. The locked success criteria and validation discipline below still gate any
-real-money trading. Earlier framing was "backtest first, live is a stretch goal";
-see `decision_log.md`.
+layer in place of fundamentals data. Purpose: a portfolio and learning project
+towards becoming a quant trader. Primary goal (changed 2026-10-08): a rigorous
+backtest plus paper trading against live public Kalshi prices, no real money.
+Real-money trading is not legal from Singapore, where Rohan lives (Gambling Control
+Act 2022). Never use a VPN or other workaround of geographic restrictions. Earlier
+framings: "backtest first, live is a stretch goal", then live in-play trading
+(2026-09-21 to 2026-10-08); see `decision_log.md`.
 
 ## Status
 Phase 0 (scoping) — in progress, not yet closed. Solo project.
@@ -75,8 +78,12 @@ Phase 0 (scoping) — in progress, not yet closed. Solo project.
   different footage from DFL, so it does not directly validate DFL-derived tracking
   accuracy. A manual spot-check (hand-label a small sample of actual DFL clips) is
   still required to get real error bars on the data actually being used.
-- Market platform (tentative): Kalshi and/or Polymarket. Both confirmed (2026) to have
-  genuine continuous in-play soccer markets and historical-data APIs.
+- Market data source (2026-10-08): Kalshi, for research data and paper trading only.
+  Its terms restrict Singapore for trading but allow non-trading access; public
+  market-data endpoints need no key. Taker fee `round_up(0.07 x C x P x (1 - P))`
+  (`0.0175` on some markets), from the help page; full PDF schedule not read.
+  Polymarket dropped: blocked in Singapore by the GRA since 2025-01, close-only for
+  Singapore, VPN use banned by its terms.
 
 ## Critical open blocker: video/market temporal mismatch
 DFL video is from the 2022 Bundesliga season. Polymarket price history only goes back
@@ -105,11 +112,15 @@ still not formally locked.
   requesting access. Not yet verified — do not assume "open source" terms; that claim
   was raised in conversation and is inconsistent with the NDA-gated access process.
   Unresolved until the real NDA text has been read.
-- Market data (Kalshi/Polymarket/Betfair/etc.): redistribution ToS not yet checked
-  for whichever source is ultimately used.
-- Gambling-advice / publication regulatory exposure: flagged, not resolved for the
-  user's specific jurisdiction. Any public output should be framed as academic/
-  research backtesting, never as betting advice.
+- Market data (Kalshi): Developer Agreement (redistribution terms) not yet read.
+  Publish aggregate statistics only until it is.
+- Regulatory (Singapore, checked 2026-10-08, not legal advice): gambling with an
+  unlicensed operator is an offence (GCA 2022 s.20(3)), so no real-money trading.
+  Advertising unlawful gambling is a strict-liability offence (s.85), and it includes
+  informing the public of an online location where unlawful gambling takes place.
+  The GitHub repo is public and names Kalshi/Polymarket. Open: whether research text
+  naming a venue counts. Public output: research framing only, never betting advice,
+  no links or invitations to any betting venue.
 
 ## Target variable (draft, not finalized)
 Two parallel targets, not one:
@@ -142,8 +153,9 @@ revised/settled price — the sports-analytics equivalent of lookahead bias.
 - PBO ≤ 20%.
 - Positive net edge after commission + slippage, with a minimum Sharpe-like ratio on
   match-level P&L, validated across multiple seasons/competitions out-of-sample.
-- Max drawdown tolerance: not yet numerically set. Planned method: a halt level from a
-  match-block bootstrap of backtest P&L (e.g. its 99th-percentile drawdown).
+- Max drawdown tolerance: deferred until backtest P&L exists (2026-10-08; paper
+  trading only, no money at risk). Planned method: a halt level from a match-block
+  bootstrap of backtest P&L (e.g. its 99th-percentile drawdown).
 - Power analysis done 2026-10-05 (`prereg/power_analysis.ipynb`): the old bar,
   rank-IC 0.02 at t ≥ 2 with 80% power, needed about 1,100 to 5,600 matches best
   case (about 3.4 times more adjusted), against about 500 in the largest archive.
@@ -202,17 +214,15 @@ installed), so interactive tools use matplotlib with the TkAgg backend.
 - Stand up `prereg/`, `factor_log.md`, `data_dictionary.md`. (`decision_log.md` is
   done and the repo is git-initialized.)
 - Lock the out-of-sample holdout set.
-- Check redistribution ToS for whichever market data source is chosen.
-- Set a numeric max-drawdown tolerance.
-- Confirm gambling-advice/publication boundary for the user's jurisdiction.
-- Set a numeric compute budget/cost ceiling for cloud GPU usage. Where training runs
-  is now decided (external/cloud GPU, e.g. Google Colab, not sustained local
-  training — a local training attempt caused a hardware failure on 2026-09-18; local
-  hardware remains fine for short inference-only smoke tests). See `decision_log.md`.
-  Data point: the first 100-epoch fine-tuning run took about 0.53 hours on a Colab T4.
-- Define live-system requirements now that live trading is the primary goal (live
-  video source and its terms, frame-to-order latency budget, market execution,
-  regulatory exposure). See the 2026-09-21 entry in `decision_log.md`.
+- Read Kalshi's Developer Agreement (redistribution terms).
+- Decide the publication boundary under GCA s.85 (public repo names betting venues).
+- Compute budget: free Colab tier only (decided 2026-10-08). Training stays on cloud
+  GPU, not local (a local training attempt caused a hardware failure on 2026-09-18;
+  local hardware is fine for short inference-only tests). Data point: 100-epoch
+  fine-tuning took about 0.53 hours on a T4. The free tier caps how many matches of
+  video can be processed, and so the MDE.
+- Live-system requirements (2026-09-21) are out of scope since 2026-10-08, apart
+  from a latency estimate for the latency-injected backtest and paper trading.
 
 Research plan (2026-09-22, see `decision_log.md`): four parallel tracks feeding one
 final test. Tracks 2 and 3 do not need the unresolved video source.
@@ -228,8 +238,9 @@ final test. Tracks 2 and 3 do not need the unresolved video source.
     (per-frame team label from shirt colour, one tracker per team, vote per ID).
   - SoccerNet-Tracking HOTA proxy check (blocked on the NDA).
   - Annotation polish (low priority): ring width from box height; per-ID smoothing.
-- **Track 2: market event study.** Check Kalshi/Polymarket data ToS and official fee
-  schedules first. Then, on 2024+ in-play soccer prices: speed and completeness of
+- **Track 2: market event study.** Read Kalshi's Developer Agreement and full fee
+  schedule first (Polymarket dropped 2026-10-08). Then, on Kalshi in-play soccer
+  prices: speed and completeness of
   price reaction to goals and red cards (Croxson & Reade method), which also measures
   broadcast delay; market-price calibration including favorite-longshot bias;
   spread, depth and fee profile by minute and price level.

@@ -1,9 +1,9 @@
 # Phase 0 Scoping Memo: Quant Sports Trading Project
 
 **Document ID:** QSP-P0-001
-**Version:** 1.5
-**Date:** 2026-10-05 (originally issued 2026-09-18; revised 2026-09-18,
-2026-09-20, 2026-09-21 and twice on 2026-10-05, see Revision History)
+**Version:** 1.6
+**Date:** 2026-10-08 (originally issued 2026-09-18; revised 2026-09-18,
+2026-09-20, 2026-09-21, twice on 2026-10-05 and on 2026-10-08, see Revision History)
 **Author:** Rohan
 **Distribution:** Internal
 **Status:** Draft. Phase 0 is not yet closed. Sections marked `[DECIDED]` are locked
@@ -42,6 +42,13 @@ downstream work until closed.
   fixed rank-IC bar, and the factor family is capped at 5. Section 4 remains
   `[DRAFT]` until pre-registration; the holdout confirmation rule and the number of
   matches (which depends on the open data-source question) are not yet fixed.
+- v1.6 (2026-10-08): Scope change logged in `decision_log.md`. The primary goal is
+  now a rigorous backtest plus paper trading, reversing v1.3: real-money trading is
+  not legal from Singapore, where the author lives, and the project's purpose is a
+  portfolio towards a quant career. Executive Summary, Section 1, Section 2.5 (Kalshi
+  as data source only, Polymarket dropped), Section 4 (drawdown deferred), Sections
+  5.3 to 5.5 and Section 8 updated. Section 5.5 compute budget decided (free tier).
+  Section 5.4 narrowed but still open (publication boundary).
 
 ---
 
@@ -55,9 +62,11 @@ testing, Benjamini-Hochberg false discovery rate control, and Probability of Bac
 Overfitting), to a sports domain, using computer-vision-derived tracking and event
 data in place of fundamentals data.
 
-Scope is fixed at soccer, with a team-level match-market framing. The project is
-oriented toward live in-play trading as its primary goal (revised 2026-09-21; it was
-originally a backtest-first project with live as a stretch goal). One material risk remains open and gates
+Scope is fixed at soccer, with a team-level match-market framing. The primary goal
+is a rigorous backtest plus paper trading against live public prices, with no real
+money (revised 2026-10-08; live in-play trading was the primary goal from 2026-09-21,
+and the project was originally backtest-first with live as a stretch goal). One
+material risk remains open and gates
 finalization of the target variable and success criteria: a temporal mismatch between
 the available video data (2022 season) and the available market history on the
 candidate trading venues (2024 onward). This risk, and four smaller open items, are
@@ -75,9 +84,11 @@ treated as a cross-sectional asset universe: a set of entities (teams), each car
 a market-implied price (odds), evaluated for mispricing using signals computed across
 that cross-section.
 
-Live in-play trading is the primary goal (revised 2026-09-21; originally scoped as a
-backtest first phase with live execution as a stretch goal). The locked success
-criteria in Section 4 still gate any real-money trading. The evaluation bar is set at
+The primary goal is a rigorous backtest plus paper trading (revised 2026-10-08).
+Real-money trading is out of scope: it is not legal from the author's jurisdiction
+(Singapore, Section 5.4), and the project's purpose is a portfolio towards a quant
+career. From 2026-09-21 to 2026-10-08 the goal was live in-play trading; before that,
+a backtest first phase with live execution as a stretch goal. The evaluation bar is set at
 an institutional research standard: every factor tested is pre-registered before its
 result is known, every test, whether it passes or fails, is logged, and statistical
 validity (FDR-corrected significance, PBO-checked robustness) is required before any
@@ -152,7 +163,14 @@ actual DFL clips, is required separately to establish real error bars on the dat
 in use. Both figures should be reported side by side; the SoccerNet figure should not
 be allowed to stand in for tracking accuracy on the project's actual data.
 
-### 2.5 Market Platform `[DECIDED in principle; blocked, see Section 5.1]`
+### 2.5 Market Platform `[DECIDED: Kalshi as data source only; see Section 5.1]`
+
+**Revised 2026-10-08:** Kalshi is the market data source, for research and paper
+trading only. Its member agreement restricts Singapore for trading but allows
+non-trading access, and its market-data endpoints are public. Polymarket is dropped:
+the Singapore Gambling Regulatory Authority has blocked it since January 2025, it is
+close-only for Singapore, and its terms ban VPN circumvention. The original text
+follows.
 
 Kalshi and Polymarket were selected initially for API accessibility. Both are
 confirmed, as of 2026, to offer continuous in-play soccer markets, not merely
@@ -225,8 +243,9 @@ the first factor test is run]`
   minimum Sharpe-like ratio on the match-level profit and loss series, validated
   across multiple seasons and competitions out of sample. Single-season validation is
   not sufficient.
-- Maximum drawdown tolerance: not yet numerically set. This figure is to be fixed
-  before any backtest is run, while no result yet exists that could bias the number.
+- Maximum drawdown tolerance: deferred until backtest P&L exists (decided
+  2026-10-08). With paper trading only, no money is at risk; the halt level will come
+  from a match-block bootstrap of backtest P&L.
 
 ---
 
@@ -274,17 +293,26 @@ remains open until the executed text is reviewed directly.
 
 ### 5.3 Market Data Redistribution Terms `[OPEN]`
 
-Redistribution and publication terms for the eventual historical odds source, whether
-Kalshi, Polymarket, Betfair, or football-data.co.uk, have not yet been reviewed.
+Kalshi is now the only market source (Section 2.5). Its Developer Agreement, which
+governs API data use, has not yet been read. Until it is, only aggregate statistics
+are published. football-data.co.uk terms (for the outcome baseline) are also unread.
 
-### 5.4 Regulatory and Publication Exposure `[OPEN]`
+### 5.4 Regulatory and Publication Exposure `[OPEN, narrowed 2026-10-08]`
 
-Gambling-advice regulatory exposure for any public output has been identified but not
-resolved for the applicable jurisdiction. Any public writeup should be framed as
-academic or research backtesting, and never as betting advice, pending resolution of
-this item.
+The author is resident in Singapore. Checked 2026-10-08 from public sources, not
+legal advice: gambling with an unlicensed operator is an offence under the Gambling
+Control Act 2022, s.20(3), so real-money trading is ruled out. Still open: s.85 of
+the same Act makes advertising unlawful gambling a strict-liability offence, and
+advertising includes informing the public of an online location where unlawful
+gambling takes place. The project repository is public and names Kalshi and
+Polymarket. Any public writeup is framed as academic research, never as betting
+advice, with no links or invitations to any betting venue.
 
-### 5.5 Compute Budget `[OPEN, hardware plan decided]`
+### 5.5 Compute Budget `[DECIDED 2026-10-08: free tier only]`
+
+**Revised 2026-10-08:** the budget is the free Google Colab tier only. This caps how
+much video can be processed, and so the number of matches and the minimum detectable
+effect in Section 4. The original text follows.
 
 Computer-vision training and inference on broadcast video is GPU-intensive. The
 hardware plan is decided: training runs on external cloud GPU (Google Colab), not
@@ -358,12 +386,11 @@ determine how much footage can realistically be processed.
 1. Resolve the video/market temporal mismatch (Section 5.1). This blocks final lock
    of Sections 3 and 4.
 2. Request and review SoccerNet's executed NDA text (Section 5.2).
-3. Review redistribution terms for the eventual market-data source (Section 5.3).
-4. Confirm the gambling-advice and publication boundary for the applicable
-   jurisdiction (Section 5.4).
-5. Set a numeric maximum drawdown tolerance (Section 4).
-6. Set a numeric compute budget for cloud computer-vision training and inference
-   (Section 5.5). The hardware plan is already decided.
+3. Read Kalshi's Developer Agreement (Section 5.3).
+4. Decide the publication boundary under s.85 of the Gambling Control Act (Section
+   5.4).
+5. Maximum drawdown tolerance: deferred until backtest P&L exists (Section 4).
+6. Compute budget: decided 2026-10-08, free tier only (Section 5.5).
 7. Establish `prereg/`, `factor_log.md`, and `data_dictionary.md` alongside this
    memo. (Version control is initialized and `decision_log.md` exists.)
 8. Lock the out-of-sample holdout set (Section 7).

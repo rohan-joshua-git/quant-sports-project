@@ -1133,21 +1133,157 @@ BH across 5 factors, a 30% holdout, and factor reliability 0.7):
 
 ---
 
-## Still open (not decided as of 2026-09-22; last updated 2026-10-05)
+## 2026-10-08: Jurisdiction check - real-money trading is not legal from Singapore `[RESULT]`
+
+Rohan is legally resident in Singapore. Checked on 2026-10-08 (web sources; not legal
+advice, no lawyer consulted):
+- **Gambling Control Act 2022, s.20(3):** gambling with an unlawful (unlicensed)
+  gambling service provider is an offence, fine up to S$10,000, prison up to 6 months,
+  or both. Singapore Pools is the only licensed remote gambling operator.
+- **Polymarket:** blocked by the Gambling Regulatory Authority (GRA) since
+  2025-01-12 as an "illegal gambling site". Polymarket's own geographic-restrictions
+  page lists Singapore as close-only (no new positions) and its Terms of Use ban VPN
+  circumvention. Confirmed in practice: fetching `polymarket.com/tos` from this
+  machine was redirected to an IMDA block page.
+- **Kalshi:** Singapore is on the restricted-jurisdiction list in the member
+  agreement. The restriction applies to trading event contracts only and "do[es] not,
+  in and of [itself], prohibit membership on, or non-trading access to, the
+  Platform". Public market-data endpoints need no API key.
+- **Betfair Exchange:** not offered in Singapore (unlicensed there).
+- **Singapore Pools** offers in-play football betting, but it is a fixed-odds
+  bookmaker that sets and varies its own odds at its discretion, not an exchange.
+  Not a fit for this research design.
+- **Gambling Control Act 2022, s.85:** advertising unlawful gambling is a
+  strict-liability offence (fine up to S$20,000). "Advertising" includes informing
+  the public of any online location where unlawful gambling takes place. The public
+  GitHub repo already names Kalshi and Polymarket as trading venues in `CLAUDE.md`,
+  this log and the memo. Whether research text naming a venue counts is not settled
+  here.
+- **Kalshi fees** (from Kalshi's help page, full PDF schedule not read): taker fee
+  `round_up(0.07 x C x P x (1 - P))` per trade, `0.0175` instead of `0.07` on some
+  markets; resting (maker) orders are free unless a market lists maker fees; no
+  settlement fee.
+
+**Consequence:** the 2026-09-21 goal (live real-money in-play trading) cannot be
+pursued while Rohan lives in Singapore. Kalshi is usable as a research data source.
+See the next entry.
+
+---
+
+## 2026-10-08: Scope change - backtest plus paper trading replaces live trading as the primary goal `[DECIDED]`
+
+**Decision (Rohan, 2026-10-08):** the primary goal is a rigorous backtest plus paper
+trading (simulated orders against live public Kalshi prices, no real money). This
+reverses the 2026-09-21 scope change, which is left as written above. No real-money
+trading, and no VPN or other workaround of geographic restrictions.
+
+**Rationale:** (1) the jurisdiction check above; (2) Rohan stated the purpose of the
+project on 2026-10-08: it is a portfolio and learning project towards becoming a quant
+trader. Methodology, honest validation and a finished result serve that goal; real
+P&L adds little and is not legally available.
+
+**What this does not change:** the evaluation discipline, pre-registration, the
+revised statistical criterion (2026-10-05), PBO and the economic criterion (net edge
+after fees and latency, now measured in backtest and paper trading only).
+
+**What this changes:**
+- Live-system requirements from 2026-09-21 drop in priority. A latency estimate is
+  still needed for the latency-injected backtest and for paper trading, but order
+  execution, live video licensing and real-money risk limits are out of scope.
+- The frame-by-frame tracker design (2026-09-22) stays: it costs nothing and suits
+  paper trading.
+- Market platform: Kalshi as data source only. Polymarket dropped (blocked in
+  Singapore, VPN use banned by its terms).
+
+**Recorded with this decision (Rohan's answers, 2026-10-08):**
+- Compute budget: **free Colab tier only** `[DECIDED]`. This caps how much video can
+  be processed and therefore the number of matches and the MDE. Rough estimate, not
+  measured: a full match at 25 fps is about 20 min of T4 time; slow state factors may
+  not need 25 fps (about 4 min per match at 5 fps).
+- Maximum drawdown tolerance: **deferred** until backtest P&L exists. With no real
+  money at risk, the planned bootstrap halt-rule method is enough for paper trading.
+
+**Proposed on 2026-10-08, not yet decided:** decouple (option 1) for the temporal
+mismatch; data-source order of Track 2 Kalshi event study, then Track 3 outcome
+baseline, then an event-data signal check, then video at scale; send the SoccerNet NDA
+request now.
+
+---
+
+## 2026-10-09: Stage 1 carry-overs - SoccerNet-Tracking as fresh footage, and acceptance rules set before measuring `[DECIDED]` `[PRE-REGISTERED]`
+
+Rohan asked to finish every open Stage 1 item. Rules below were written by Claude
+under that instruction, before any tracker output on SoccerNet existed (only the
+sequence list and one ground-truth file format had been looked at).
+
+**Data source: SN-Tracking-2023 on Hugging Face, not NDA-gated.** Checked
+2026-10-09: the repo is public and ungated (`gated: False` from the HF API), unlike
+`SoccerNet-Tracking-RAW-Video`, which is gated behind the NDA. No licence file on the
+dataset or the `sn-tracking` GitHub repo. The SoccerNet-Tracking paper (arXiv
+2204.06918) says test ground truth is published "so that researchers can benchmark
+their results locally". Used only for that: private local evaluation, frames
+gitignored in `experiments/soccernet/`, no redistribution, aggregate scores only.
+So the HOTA check is no longer blocked on the NDA. The NDA question remains for the
+main SoccerNet broadcast corpus.
+
+**Fresh footage:** sequences picked by seed 20261009 before any frame was viewed
+(`experiments/soccernet/selection.json`):
+- Tuning: 6 train sequences (075, 101, 104, 112, 114, 165), plus the spent DFL frames
+  300 to 749 with their hand labels.
+- Validation, run once per pre-listed variant: 12 test sequences (123, 127, 130,
+  131, 140, 144, 149, 150, 187, 189, 191, 196). Different league (Swiss Super League),
+  1080p, 25 fps, 30 s each. The test split has 49 sequences; this subset keeps CPU
+  time manageable.
+
+**Variants (fixed now):** V0 baseline (frozen settings from the 2026-10-05
+spot-check); V1 ball fixes (upper-body rejection, confident-detection override, and
+a recalibrated `accel_std`, all chosen on the tuning set); V2 team-split tracking
+(per-frame shirt colour, one ByteTrack per team plus one for goalkeepers and
+referees); V3 = V1 + V2.
+
+**Acceptance rules on the validation sequences, each against V0 on the same
+sequences:**
+1. **Ball fixes (V1) are adopted if all three hold:** (a) wrong-ball frames (a
+   reported ball, detected or predicted, more than 50 px from the ground-truth ball
+   while it is annotated) fall by at least 25% relative; (b) the share of annotated
+   ball frames with a reported ball within 10 px drops by no more than 2 percentage
+   points; (c) the share of Kalman-predicted frames with the truth inside 2 sigma is
+   between 75% and 95%.
+2. **Note on (c):** the 2026-10-05 spot-check expected "about 95%" inside 2 sigma.
+   That was wrong for a 2D position: for a 2D Gaussian with per-axis sigma, the
+   2-sigma circle holds 1 - exp(-2) = 86.5%. The spot-check's 51% is still
+   overconfident.
+3. **Team-split tracking (V2) becomes the default if** people-only HOTA improves by
+   at least 1.0 point and people-only DetA falls by no more than 0.5 point.
+   Otherwise it stays in the code as an option, off by default.
+4. **HOTA architecture check:** class-agnostic HOTA including the ball (the
+   benchmark's own convention) of at least 47.2, the published off-the-shelf
+   ByteTrack baseline on the full test set (paper Table 3; FairMOT fine-tuned on
+   SoccerNet scored 57.9; ByteTrack with ground-truth detections 71.5). Below 47.2,
+   Stage 1 is reopened. Comparison caveat: 12 of 49 sequences, and our detector was
+   fine-tuned on Bundesliga images, not SoccerNet.
+
+**ID errors by type:** each ground-truth track's matched prediction ID (IoU of at
+least 0.5, per-frame Hungarian matching) is followed; a change is a cross-team swap,
+a teammate swap (the new ID previously sat on another ground-truth track of the
+other or same team), or a new ID (fragmentation). Reported, no pass rule.
+
+---
+
+## Still open (not decided as of 2026-09-22; last updated 2026-10-08)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
   access (see above).
 - Resolution of the video/market temporal mismatch (decouple vs. period-matched odds
   vs. forward-looking live capture).
 - SoccerNet NDA text: not yet requested/reviewed.
-- Market data redistribution terms (Kalshi/Polymarket/Betfair/football-data.co.uk):
-  not yet reviewed.
-- Gambling-advice/publication regulatory exposure for the applicable jurisdiction:
-  not yet resolved.
-- Numeric maximum drawdown tolerance: not yet set.
-- Numeric compute budget/cost ceiling for cloud GPU usage (Colab or similar): not yet
-  set, though the local-vs-cloud question itself is now decided (see above). One
-  data point now exists: about 0.53 hours on a T4 for a 100-epoch `yolo26n` run.
+- Market data redistribution terms: Kalshi is now the only market source (2026-10-08);
+  its Developer Agreement is not yet read. football-data.co.uk not yet reviewed.
+- Regulatory exposure: real-money trading ruled out (2026-10-08). Publication
+  boundary narrowed but open: s.85 of the Gambling Control Act (advertising unlawful
+  gambling, strict liability) versus a public repo that names Kalshi and Polymarket.
+- Numeric maximum drawdown tolerance: deferred until backtest P&L exists (2026-10-08).
+- Compute budget: free Colab tier only (decided 2026-10-08).
 - Git repository is initialized (initial commit `35cff10`). `prereg/`,
   `factor_log.md`, and `data_dictionary.md` not yet created.
 - Trained detector was run on the cached DFL clip on 2026-09-21 (counts and visual
@@ -1164,5 +1300,5 @@ BH across 5 factors, a 30% holdout, and factor reliability 0.7):
 - Power analysis: done 2026-10-05; statistical success criterion revised the same
   day (see those entries). Holdout confirmation rule and the data-source strategy
   are still open.
-- Kalshi and Polymarket fee schedules: third-party figures only, official schedules
-  not yet read.
+- Kalshi fee formula taken from Kalshi's help page (2026-10-08); the full PDF fee
+  schedule is not yet read. Polymarket fees no longer needed.
