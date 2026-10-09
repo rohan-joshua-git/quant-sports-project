@@ -57,9 +57,17 @@ Phase 0 (scoping) — in progress, not yet closed. Solo project.
   on held-out frames 300 to 749: people precision 99.8%, recall 97.2%, class correct
   98.2%; ball detector precision 91.2% but recall only 54.2%; a persistent false
   positive (a green-kit player's body) captured the ball filter for about 4.5 s, and
-  `ball_sigma` is overconfident (truth inside 2 sigma 51% instead of 95%). Frames 300
-  to 749 are now spent for tuning; fixes need fresh footage. SoccerNet-Tracking HOTA
-  still not done (NDA unread).
+  `ball_sigma` is overconfident (truth inside 2 sigma 51%; nominal is 86.5% for a 2D
+  position, not the 95% stated then). Frames 300 to 749 are now spent for tuning.
+- **Stage 1 reopened 2026-10-09** by a pre-registered rule: SoccerNet-Tracking HOTA
+  (class-agnostic incl. ball, 12 test sequences) 40.5 against a 47.2 bar (paper's
+  off-the-shelf ByteTrack); people HOTA 41.8, DetA 54, AssA 33. Detection is the
+  bigger loss: recall at IoU 0.5 only 59 to 83% per clip, loose boxes (matched IoU
+  about 0.70), small players worst. Ball fixes (upper-body rejection, confident
+  override, `accel_std` 64) and team-split tracking were tested and **not adopted**;
+  they stay in `tracker.py`, off by default. Per-frame colour routing breaks tracks
+  even at 97% label accuracy: team identity needs a per-track vote (Stage 3). Those 12
+  test sequences are spent; 37 remain fresh. Detail in `decision_log.md`.
 - Research plan and edge hypothesis (2026-09-22, full detail in `decision_log.md`):
   in-play prices absorb goals swiftly and fully (Croxson & Reade 2014), and broadcast
   video lags the live event, so any edge must come from **slow state estimation**
@@ -74,7 +82,8 @@ Phase 0 (scoping) — in progress, not yet closed. Solo project.
 - Tracking-accuracy validation: SoccerNet-Tracking (Swiss Super League, 12 games,
   labeled bounding boxes + tracklet IDs), scored via HOTA (not MOTA — HOTA balances
   detection and identity-association quality, which is where trackers usually fail
-  across camera cuts). This is a proxy/architecture check only — different league,
+  across camera cuts). Done 2026-10-09 on 12 test sequences (HOTA 40.5, failed the
+  47.2 bar). This is a proxy/architecture check only — different league,
   different footage from DFL, so it does not directly validate DFL-derived tracking
   accuracy. A manual spot-check (hand-label a small sample of actual DFL clips) is
   still required to get real error bars on the data actually being used.
@@ -107,6 +116,10 @@ still not formally locked.
 ## Data licensing status
 - DFL Kaggle dataset: usable for this personal project per written confirmation from
   Kaggle's Data Team. Keep the confirmation email on file.
+- SoccerNet-Tracking (SN-Tracking-2023 on Hugging Face): public and ungated, no
+  licence file (checked 2026-10-09). The paper publishes test ground truth for local
+  benchmarking; used only for private local evaluation, frames gitignored, aggregate
+  scores only.
 - SoccerNet: raw video requires signing an NDA (prevents redistribution of copyrighted
   broadcast material). Actual NDA text is not public — only sent via email after
   requesting access. Not yet verified — do not assume "open source" terms; that claim
@@ -185,9 +198,10 @@ IC/FDR/PBO on the development set.
 ## Pipeline architecture (conceptual stages)
 Code layout: real pipeline code lives in `pipeline/<stage>/` (Stage 1 is
 `pipeline/detection/`: `train.ipynb`, `evaluation.ipynb`, `tracker.py`,
-`ball_filter.py`; shared drawing helpers in `pipeline/common/drawing.py`).
+`ball_filter.py`, `team.py`; shared drawing helpers in `pipeline/common/drawing.py`).
 `experiments/` is reserved for diagnostic spikes (including `spotcheck.py`, the
-hand-label tool; its output folder `experiments/spotcheck/` is gitignored). Package
+hand-label tool, and `soccernet_eval.py`, the SoccerNet-Tracking HOTA check; their
+output folders `experiments/spotcheck/` and `experiments/soccernet/` are gitignored). Package
 versions are pinned in `requirements.txt` (`sv.ByteTrack` is removed in supervision
 0.31). This machine's OpenCV has no window support (`opencv-python-headless` is also
 installed), so interactive tools use matplotlib with the TkAgg backend.
@@ -227,17 +241,15 @@ installed), so interactive tools use matplotlib with the TkAgg backend.
 Research plan (2026-09-22, see `decision_log.md`): four parallel tracks feeding one
 final test. Tracks 2 and 3 do not need the unresolved video source.
 
-- **Track 1: Stage 1. Done 2026-10-05** (review bugs fixed, ball out of ByteTrack,
-  Kalman ball filter, cross-class NMS, visual check, hand-label spot-check; see the
-  Stage 1 bullet in Decisions and `decision_log.md`). Carried forward, none blocking:
-  - Ball filter capture by a persistent false positive, and overconfident
-    `ball_sigma`. Candidate fixes: reject ball detections on a player's upper body;
-    let a confident detection outside the gate override weak ones inside it. Must be
-    validated on fresh footage, not frames 300 to 749.
-  - ID errors on overlap: count by type first; candidate fix is team-split tracking
-    (per-frame team label from shirt colour, one tracker per team, vote per ID).
-  - SoccerNet-Tracking HOTA proxy check (blocked on the NDA).
-  - Annotation polish (low priority): ring width from box height; per-ID smoothing.
+- **Track 1: Stage 1. Closed 2026-10-05, reopened 2026-10-09** after the
+  SoccerNet-Tracking HOTA check failed its pre-registered bar (see the Stage 1 bullets
+  in Decisions). The 2026-10-05 carry-overs were all worked: ball fixes and team-split
+  tracking tested and not adopted, ID errors counted by type, HOTA done, drawing
+  polish done. Proposals for the reopened stage (not decided): fine-tune the detector
+  on the SoccerNet-Tracking train split (free Colab), try imgsz 1280 for small
+  players, tune ByteTrack's lost-track buffer and matching threshold, consider
+  camera-motion compensation. Validate any fix on the 37 untouched test sequences,
+  with the bar set before measuring.
 - **Track 2: market event study.** Read Kalshi's Developer Agreement and full fee
   schedule first (Polymarket dropped 2026-10-08). Then, on Kalshi in-play soccer
   prices: speed and completeness of

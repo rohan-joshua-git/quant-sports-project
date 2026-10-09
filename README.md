@@ -107,18 +107,22 @@ current constraints. Where they disagree, the log wins.
 
 ## Current state and known limitations
 
-Stage 1 (detection and tracking) is **closed as validated with known limits**:
+Stage 1 (detection and tracking) is **reopened**: it failed a pre-registered proxy
+check on an independent tracking benchmark.
 
 - A YOLO26n detector fine-tuned for player, goalkeeper, referee and ball, with
   ByteTrack for people and a separate Kalman filter for the ball, in a frame-by-frame
-  design, chosen because a live pipeline cannot wait for a batch to fill.
+  design.
 - A blind hand-labelling check on held-out frames of one clip measured people
   detection at about 97 to 100% and the ball at 91% precision but only 54% recall.
-- Open problems: weak ball detection, a ball filter that a persistent false positive
-  can capture, identity errors when players overlap, and per-frame latency above the
-  real-time budget on CPU.
-- These figures come from one clip of one match, labelled by the author. A proxy
-  check on an independent labelled tracking dataset has not been done yet.
+  These figures come from one clip of one match, labelled by the author.
+- On 12 SoccerNet-Tracking test sequences (a different league), HOTA was 40.5 against
+  a bar of 47.2 set before measuring. Detection is the main loss: boxes often miss or
+  fit loosely, especially for small, distant players. Two candidate fixes (ball-filter
+  changes, team-split tracking) were tested there and not adopted.
+- Open problems: detection on unfamiliar footage, weak ball detection, identity
+  errors (mostly track fragmentation), and per-frame latency above the real-time
+  budget on CPU.
 
 Major open blockers are listed in `CLAUDE.md`, including the choice of video source and
 the mismatch between the era of available video and the era of available market price

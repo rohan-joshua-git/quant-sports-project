@@ -1270,6 +1270,82 @@ other or same team), or a new ID (fragmentation). Reported, no pass rule.
 
 ---
 
+## 2026-10-09: SoccerNet-Tracking validation - all three rules failed, Stage 1 reopened `[RESULT]` `[DECIDED]`
+
+Ran under the rules in the entry above. Tool: `experiments/soccernet_eval.py`
+(fetch, detect, tune, track, score). Detections cached once per frame and replayed;
+replay checked identical to live tracking (300 DFL frames), and the refactored
+`tracker.py` checked identical to the committed one with default settings (100 frames).
+HOTA, CLEAR and Identity from TrackEval (commit `12c8791`), checked: ground truth
+against itself scores 100, and frame offset 0 aligns best.
+
+**Tuning (train sequences + DFL frames 300 to 749 only).**
+- Ball grid, chosen by the rule set in advance: `ball_body_frac` 0.65,
+  `ball_override_conf` 0.5. On train they cut wrong-ball frames only 3% (1730 to 1641).
+- `accel_std`: the planned grid (4 to 16) ended with 2-sigma coverage still rising at
+  its top (41%), so it was **widened after seeing that**, to 24, 32, 48, 64, on the
+  same tuning data. Closest to 86.5% was 64 (58.6% on train). Most large ball errors
+  come from the filter sitting on the wrong object, which extra process noise cannot
+  fix.
+- Team colours on train, scored on ground-truth boxes: the shipped feature (median
+  torso Lab, grass masked) was 72.5% right per frame. Mean torso colour reached
+  83.5% pooled, but some clips stayed at 57 to 67%. Time-boxed; not changed.
+
+**Validation (12 test sequences, run once):**
+
+| Variant | People HOTA | DetA | AssA | All + ball HOTA | Ball found within 10 px | Wrong-ball frames | 2-sigma coverage |
+|---|---|---|---|---|---|---|---|
+| V0 baseline | 41.8 | 54.1 | 32.8 | 40.5 | 25.8% | 1951 | 39.3% |
+| V1 ball fixes | 41.8 | 54.1 | 32.8 | 40.4 | 24.5% | 2044 | 70.2% |
+| V2 team split | 41.3 | 53.7 | 32.3 | 40.0 | 25.8% | 1951 | 39.3% |
+| V3 both | 41.3 | 53.7 | 32.3 | 40.0 | 24.5% | 2044 | 70.2% |
+
+**Rules applied:**
+1. **V1 ball fixes: not adopted.** (a) wrong-ball frames rose 4.8% instead of falling
+   25%: fail. (b) found rate fell 1.3 points: pass. (c) coverage 70.2%, below 75%:
+   fail. The options stay in `tracker.py`, off by default. Capture episodes (wrong
+   ball for 1 s or more) went from 13 to 12. `ball_sigma` stays overconfident (39% at
+   2 sigma against a nominal 86.5%).
+2. **V2 team split: not adopted** (people HOTA -0.5, needed +1.0). Per-frame team
+   labels were 97.1% right on test (72% on train), yet the split still added
+   fragmentation (new-ID events 2482 against 1067): a 3% label error rate is enough to
+   send boxes to the wrong tracker and break tracks. Hard routing by per-frame colour
+   is the wrong design; team identity belongs in a per-track vote (Stage 3).
+3. **HOTA architecture check: fail.** All + ball HOTA 40.5 against the 47.2 bar
+   (off-the-shelf ByteTrack in the SoccerNet paper). Per-clip HOTA ranges 26.0 to 63.7;
+   bootstrap 95% interval of the clip mean 34.7 to 44.6, wholly below 47.2. **Per the
+   rule, Stage 1 is reopened.**
+
+**ID changes (V0, 12 clips, 6 minutes of play):** cross-team 280, teammate 71, other
+30, new ID 1067. Fragmentation dominates; cross-team switches are real and frequent
+on this footage, unlike the 0 seen in 18 s of DFL.
+
+**Why the DFL spot-check looked so much better.** It counted "a real person got a
+box"; HOTA needs boxes to overlap the truth. On train sequences, people recall at
+IoU 0.5 was 59 to 83% per clip (worse for small, distant players), and matched boxes
+averaged IoU 0.70, so they are loose by SoccerNet's box convention. Plus a different
+league, camera work and kit colours from the Bundesliga images the detector was
+fine-tuned on.
+
+**Caveats:** proxy footage (Swiss Super League); 12 of 49 test sequences; SoccerNet's
+ball ground truth is keyframe-annotated with linear interpolation, so small ball
+errors are uncertain; imgsz 640 on 1080p frames.
+
+**What the reopened Stage 1 needs (proposals, not decided):**
+- Detection is the larger loss (DetA 51 to 54). Candidates: fine-tune the detector on
+  the SoccerNet-Tracking train split (57 labelled sequences; same licence caveat as
+  above) on free Colab; imgsz 1280 for small players (about 4x CPU cost).
+- Association (AssA 33, mostly new IDs): tune ByteTrack's lost-track buffer and
+  matching threshold on train; consider camera-motion compensation.
+- Ball: the false-ball problem is a detector problem more than a filter problem.
+- Validation of any fix must use **fresh** sequences: 37 test sequences are still
+  untouched. These 12 are now spent.
+- Drawing polish done the same day (`pipeline/common/drawing.py`): ring size from box
+  height, optional per-ID `BoxSmoother` for display, uncertainty circle drawn at the
+  95% radius (2.45 sigma).
+
+---
+
 ## Still open (not decided as of 2026-09-22; last updated 2026-10-08)
 
 - Primary video/CV source for the full research build, following loss of DFL Kaggle
@@ -1295,8 +1371,12 @@ other or same team), or a new ID (fragmentation). Reported, no pass rule.
 - Tracker bugs from the 2026-09-22 review: fixed as of 2026-09-25, including the
   NMS test and the Kalman ball filter (see the 2026-09-25 entries).
 - Ball filter captured by a persistent false positive, and overconfident
-  `ball_sigma` (2026-10-05 spot-check): open; a fix needs fresh footage to validate.
-- ID errors on overlap: open; team-split tracking is the candidate fix.
+  `ball_sigma` (2026-10-05 spot-check): fixes tested on SoccerNet 2026-10-09 and not
+  adopted; still open, now seen as mainly a detector problem.
+- ID errors on overlap: counted by type 2026-10-09 (fragmentation dominates, then
+  cross-team); team-split tracking tested and not adopted.
+- Stage 1 reopened 2026-10-09 (SoccerNet HOTA 40.5 against the 47.2 bar). 37 fresh
+  test sequences remain for validating fixes.
 - Power analysis: done 2026-10-05; statistical success criterion revised the same
   day (see those entries). Holdout confirmation rule and the data-source strategy
   are still open.

@@ -8,3 +8,7 @@ numpy==2.3.5
 # CPU vs CUDA build is chosen by which index torch is installed from.
 torch==2.14.0
 ipykernel==7.3.0
+# HOTA scoring for experiments/soccernet_eval.py. Last commit, unreleased on PyPI;
+# needs np.float / np.int aliased under NumPy 2 (done in the script).
+trackeval @ git+https://github.com/JonathonLuiten/TrackEval@12c8791b303e0a0b50f753af204249e622d0281a
+scipy==1.18.1

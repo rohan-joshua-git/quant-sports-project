@@ -1,9 +1,10 @@
 # Phase 0 Scoping Memo: Quant Sports Trading Project
 
 **Document ID:** QSP-P0-001
-**Version:** 1.6
-**Date:** 2026-10-08 (originally issued 2026-09-18; revised 2026-09-18,
-2026-09-20, 2026-09-21, twice on 2026-10-05 and on 2026-10-08, see Revision History)
+**Version:** 1.7
+**Date:** 2026-10-09 (originally issued 2026-09-18; revised 2026-09-18,
+2026-09-20, 2026-09-21, twice on 2026-10-05, on 2026-10-08 and on 2026-10-09, see
+Revision History)
 **Author:** Rohan
 **Distribution:** Internal
 **Status:** Draft. Phase 0 is not yet closed. Sections marked `[DECIDED]` are locked
@@ -49,6 +50,10 @@ downstream work until closed.
   as data source only, Polymarket dropped), Section 4 (drawdown deferred), Sections
   5.3 to 5.5 and Section 8 updated. Section 5.5 compute budget decided (free tier).
   Section 5.4 narrowed but still open (publication boundary).
+- v1.7 (2026-10-09): Sections 2.4 and 6 synced. The SoccerNet-Tracking HOTA check was
+  run on 12 test sequences (SN-Tracking-2023, ungated, not under the NDA) against a
+  bar set beforehand: HOTA 40.5 against 47.2, so Stage 1 is reopened. No `[DECIDED]`
+  scope decision changed.
 
 ---
 
@@ -162,6 +167,13 @@ used for research. A manual spot-check, consisting of hand-labeling a small samp
 actual DFL clips, is required separately to establish real error bars on the data
 in use. Both figures should be reported side by side; the SoccerNet figure should not
 be allowed to stand in for tracking accuracy on the project's actual data.
+
+**Update 2026-10-09:** run on 12 SoccerNet-Tracking test sequences from SN-Tracking-2023,
+which is public and not NDA-gated (raw broadcast video remains gated). HOTA 40.5
+(class-agnostic, ball included) against a pre-registered bar of 47.2, the published
+off-the-shelf ByteTrack baseline; people-only HOTA 41.8. The spot-check (Section 6)
+and this figure differ mainly because HOTA requires box overlap with the truth while
+the spot-check counted whether a person had any box.
 
 ### 2.5 Market Platform `[DECIDED: Kalshi as data source only; see Section 5.1]`
 
@@ -339,9 +351,11 @@ determine how much footage can realistically be processed.
    frames of the cached DFL clip (2026-10-05) measured people detection at about 97
    to 100% (precision 99.8%, recall 97.2%, class correct 98.2%) and the ball at 91.2%
    precision but 54.2% recall, with the ball filter vulnerable to capture by a
-   persistent false positive. Stage 1 is closed as validated with known limits; the
-   SoccerNet-Tracking HOTA proxy check is still outstanding. Full results are in
-   `decision_log.md`.
+   persistent false positive. Stage 1 was closed as validated with known limits on
+   2026-10-05, then **reopened on 2026-10-09** when the SoccerNet-Tracking HOTA proxy
+   check failed its pre-registered bar (Section 2.4): detection recall at IoU 0.5 was
+   59 to 83% per clip, and ball-filter and team-split tracking fixes tested the same
+   day were not adopted. Full results are in `decision_log.md`.
 2. **Calibration (pitch homography).** Pixel-space coordinates are mapped to
    real-world pitch coordinates. This step is required before any speed or distance
    figure is meaningful.
